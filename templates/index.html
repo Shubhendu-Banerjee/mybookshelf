@@ -1,6 +1,9 @@
 <!doctype html>
 <html>
-<head><title>Welcome to MyBookShelf</title></head>
+<head>
+  <title>Welcome to MyBookShelf</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
 <body>
   <h2>Welcome to MyBookShelf</h2>
   <a href="/login">Login</a> | <a href="/register">Register</a>

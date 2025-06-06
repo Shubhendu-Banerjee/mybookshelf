@@ -1,29 +1,59 @@
 <!doctype html>
 <html>
-<head><title>Dashboard</title></head>
+<head>
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='autocomplete.js') }}"></script>
+</head>
 <body>
   <h2>Welcome to Your Dashboard</h2>
 
-  <form method="POST" action="/add">
-    <input type="text" name="title" placeholder="Title" required>
-    <input type="text" name="author" placeholder="Author" required>
-    <input type="text" name="genre" placeholder="Genre" required>
-    <select name="status">
-      <option>To Read</option>
-      <option>Reading</option>
-      <option>Read</option>
-    </select>
-    <button type="submit">Add Book</button>
-  </form>
+  <form method="POST" action="/add" style="display: flex; flex-wrap: wrap; gap: 12px; max-width: 600px;">
+  
+    <label style="position: relative; display: flex; flex-direction: column;">
+      Title:
+      <input name="title" autocomplete="off" style="padding: 6px;">
+    </label>    
+    
+    <label style="flex: 1 1 200px; display: flex; flex-direction: column;">
+      Author:
+      <input name="author" style="padding: 6px;">
+    </label>
+    
+    <label style="flex: 1 1 150px; display: flex; flex-direction: column;">
+      Genre:
+      <input name="genre" style="padding: 6px;">
+    </label>
+    
+    <label style="flex: 1 1 150px; display: flex; flex-direction: column;">
+      Status:
+      <select name="status" style="padding: 6px;">
+        <option>To Read</option>
+        <option>Reading</option>
+        <option>Read</option>
+      </select>
+    </label>
+    
+    <label style="flex: 1 1 150px; display: flex; flex-direction: column;">
+      Progress (%):
+      <input type="number" name="progress" min="0" max="100" step="10" value="0" style="padding: 6px;">
+    </label>
+    
+    <div style="flex-basis: 100%;"></div> <!-- Line break -->
+    
+    <button type="submit" style="padding: 8px 16px; margin-top: 8px;">Add</button>
+    
+  </form>     
 
   <h3>Your Books</h3>
   <ul>
     {% for book in books %}
-      <li>{{ book[2] }} by {{ book[3] }} ({{ book[5] }})
-          <a href="/delete/{{ book[0] }}">Delete</a>
+      <li>
+        {{ book[2] }} by {{ book[3] }} ({{ book[5] }}) — Progress: {{ book[6] }}%
+        <a href="/delete/{{ book[0] }}">Delete</a>
       </li>
     {% endfor %}
-  </ul>
+  </ul>  
 
   <a href="/logout">Logout</a>
 </body>
