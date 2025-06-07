@@ -12,7 +12,7 @@ import os
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+app.secret_key = 'your_secret_key' # IMPORTANT: Change this to a strong, random key in a production environment
 
 DB_FILE = 'books.db'
 
@@ -32,7 +32,9 @@ def init_db():
                 author TEXT,
                 genre TEXT,
                 status TEXT,
-                progress INTEGER DEFAULT 0
+                progress INTEGER DEFAULT 0,
+                google_books_id TEXT,
+                thumbnail_url TEXT
             )''')
         conn.commit()
 
@@ -58,8 +60,10 @@ def register():
                 conn.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
                 conn.commit()
                 return redirect(url_for('login'))
-            except:
-                return 'Username already exists.'
+            except sqlite3.IntegrityError: # Catch specific error for unique constraint
+                return 'Username already exists. Please choose a different one.'
+            except Exception as e:
+                return f'An error occurred: {e}' # More general error handling
     return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -72,7 +76,7 @@ def login():
             if user and check_password_hash(user[2], password):
                 session['user_id'] = user[0]
                 return redirect(url_for('dashboard'))
-            return 'Invalid credentials.'
+            return 'Invalid credentials. Please try again.' # More user-friendly message
     return render_template('login.html')
 
 @app.route('/logout')
@@ -92,20 +96,32 @@ def dashboard():
 def add_book():
     if 'user_id' not in session:
         return redirect(url_for('login'))
+
     title = request.form['title']
     author = request.form['author']
     genre = request.form['genre']
     status = request.form['status']
+    progress = int(request.form.get('progress', 0))
+    google_books_id = request.form.get('google_books_id', None)
+    thumbnail_url = request.form.get('thumbnail_url', None)
+
     with sqlite3.connect(DB_FILE) as conn:
-        progress = int(request.form.get('progress', 0))
-        conn.execute("INSERT INTO books (user_id, title, author, genre, status, progress) VALUES (?, ?, ?, ?, ?, ?)",
-             (session['user_id'], title, author, genre, status, progress))
+        conn.execute('''
+            INSERT INTO books (user_id, title, author, genre, status, progress, google_books_id, thumbnail_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (session['user_id'], title, author, genre, status, progress, google_books_id, thumbnail_url))
         conn.commit()
+
     return redirect(url_for('dashboard'))
+
 
 @app.route('/delete/<int:book_id>')
 def delete_book(book_id):
+    if 'user_id' not in session: # Ensure user is logged in before deleting
+        return redirect(url_for('login'))
+
     with sqlite3.connect(DB_FILE) as conn:
+        # Added user_id to the WHERE clause to prevent users from deleting other users' books
         conn.execute("DELETE FROM books WHERE id = ? AND user_id = ?", (book_id, session['user_id']))
         conn.commit()
     return redirect(url_for('dashboard'))

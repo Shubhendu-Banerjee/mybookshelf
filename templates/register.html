@@ -1,16 +1,135 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>Register</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body {
+      /* Overrides from style.css for auth pages, ensuring full height and centering */
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh; /* Ensure full viewport height */
+      margin: 0;
+      padding: 20px; /* Add some padding */
+      box-sizing: border-box; /* Include padding in total size */
+      background-color: var(--bg-light); /* Use theme variable */
+      color: var(--text-light); /* Use theme variable */
+    }
+
+    body.dark-mode {
+      background-color: var(--bg-dark);
+      color: var(--text-dark);
+    }
+
+    h2 {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background-color: var(--card-bg-light); /* Use theme variable */
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+      width: 100%; /* Take full width of parent */
+      max-width: 320px; /* Adjusted max-width for better look */
+      box-sizing: border-box; /* Include padding and border in the element's total width and height */
+    }
+
+    body.dark-mode form {
+      background-color: var(--card-bg-dark);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+    }
+
+    label {
+      font-size: 0.9rem;
+      color: inherit;
+    }
+
+    input {
+      padding: 10px;
+      border: 1px solid var(--border-color-light); /* Use theme variable */
+      border-radius: 6px;
+      background-color: var(--input-bg-light); /* Use theme variable */
+      color: var(--text-light); /* Use theme variable */
+    }
+
+    body.dark-mode input {
+      border: 1px solid var(--border-color-dark);
+      background-color: var(--input-bg-dark);
+      color: var(--text-dark);
+    }
+
+    button {
+      padding: 10px;
+      border: none;
+      background: var(--accent); /* Use theme variable */
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+
+    button:hover {
+      background: var(--accent-hover); /* Use theme variable */
+      transform: translateY(-1px);
+    }
+
+    .link {
+      margin-top: 12px;
+      font-size: 0.9rem;
+      color: inherit;
+    }
+
+    .link a {
+      color: var(--accent); /* Use theme variable */
+      text-decoration: none;
+    }
+
+    .link a:hover {
+      text-decoration: underline;
+      color: var(--accent-hover); /* Use theme variable */
+    }
+  </style>
 </head>
 <body>
+  <div class="toggle-container" style="position: absolute; top: 20px; right: 20px;">
+    <button onclick="toggleDarkMode()">🌓 Toggle Dark Mode</button>
+  </div>
   <h2>Register</h2>
   <form method="POST">
-    Username: <input type="text" name="username" required><br>
-    Password: <input type="password" name="password" required><br>
+    <label>
+      Username:
+      <input type="text" name="username" required>
+    </label>
+    <label>
+      Password:
+      <input type="password" name="password" required>
+    </label>
     <button type="submit">Register</button>
   </form>
-  <a href="/login">Already have an account? Login</a>
+  <div class="link">
+    <a href="/login">Already have an account? Login</a>
+  </div>
+
+  <script>
+    function toggleDarkMode() {
+      document.body.classList.toggle('dark-mode');
+      localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+    }
+
+    window.onload = () => {
+      if (localStorage.getItem('darkMode') === 'true') {
+        document.body.classList.add('dark-mode');
+      }
+    };
+  </script>
 </body>
 </html>
