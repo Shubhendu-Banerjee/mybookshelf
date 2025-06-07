@@ -5,43 +5,9 @@
   <title>Welcome to MyBookShelf</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <style>
-    body {
-      /* Overrides from style.css for auth pages, ensuring full height and centering */
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh; /* Ensure full viewport height */
-      margin: 0;
-      padding: 20px; /* Add some padding */
-      box-sizing: border-box; /* Include padding in total size */
-      background-color: var(--bg-light); /* Use theme variable */
-      color: var(--text-light); /* Use theme variable */
-    }
-
-    body.dark-mode {
-      background-color: var(--bg-dark);
-      color: var(--text-dark);
-    }
-
-    h2 {
-      font-size: 2rem;
-      margin-bottom: 1rem;
-      text-align: center; /* Center heading */
-    }
-
-    .button-group {
-      display: flex;
-      gap: 16px;
-      margin-top: 20px;
-    }
-
-    /* Styles for the links acting as buttons are now in style.css */
-  </style>
 </head>
 <body>
-  <div class="toggle-container" style="position: absolute; top: 20px; right: 20px;">
+  <div class="toggle-container">
     <button onclick="toggleDarkMode()">🌓 Toggle Dark Mode</button>
   </div>
   <h2>Welcome to <span style="color: var(--accent)">MyBookShelf</span></h2>

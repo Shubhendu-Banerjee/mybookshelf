@@ -25,6 +25,7 @@ def init_db():
                         username TEXT UNIQUE,
                         password TEXT
                     )''')
+        # Updated books table: removed 'progress', added 'current_page'
         c.execute('''CREATE TABLE IF NOT EXISTS books (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
@@ -32,13 +33,30 @@ def init_db():
                 author TEXT,
                 genre TEXT,
                 status TEXT,
-                progress INTEGER DEFAULT 0,
+                current_page INTEGER DEFAULT 0, -- New field
                 google_books_id TEXT,
                 thumbnail_url TEXT
             )''')
         conn.commit()
 
+# --- Database Migration Logic (Optional, for existing databases) ---
+# This part handles adding the 'current_page' column if it doesn't exist
+def migrate_db():
+    with sqlite3.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        try:
+            # Try to add the column if it doesn't exist
+            c.execute("ALTER TABLE books ADD COLUMN current_page INTEGER DEFAULT 0")
+            conn.commit()
+            print("Database migrated: 'current_page' column added to 'books' table.")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name: current_page" in str(e):
+                print("Database migration skipped: 'current_page' column already exists.")
+            else:
+                raise e # Re-raise other operational errors
+
 init_db()
+migrate_db() # Call migration after initialization
 
 # ------------------------
 # Routes
@@ -60,10 +78,10 @@ def register():
                 conn.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
                 conn.commit()
                 return redirect(url_for('login'))
-            except sqlite3.IntegrityError: # Catch specific error for unique constraint
+            except sqlite3.IntegrityError:
                 return 'Username already exists. Please choose a different one.'
             except Exception as e:
-                return f'An error occurred: {e}' # More general error handling
+                return f'An error occurred: {e}'
     return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -76,7 +94,7 @@ def login():
             if user and check_password_hash(user[2], password):
                 session['user_id'] = user[0]
                 return redirect(url_for('dashboard'))
-            return 'Invalid credentials. Please try again.' # More user-friendly message
+            return 'Invalid credentials. Please try again.'
     return render_template('login.html')
 
 @app.route('/logout')
@@ -89,6 +107,7 @@ def dashboard():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     with sqlite3.connect(DB_FILE) as conn:
+        # Select all columns, 'current_page' is at index 6 now
         books = conn.execute("SELECT * FROM books WHERE user_id = ?", (session['user_id'],)).fetchall()
     return render_template('dashboard.html', books=books)
 
@@ -101,15 +120,15 @@ def add_book():
     author = request.form['author']
     genre = request.form['genre']
     status = request.form['status']
-    progress = int(request.form.get('progress', 0))
+    current_page = int(request.form.get('current_page', 0)) # Get new field
     google_books_id = request.form.get('google_books_id', None)
     thumbnail_url = request.form.get('thumbnail_url', None)
 
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute('''
-            INSERT INTO books (user_id, title, author, genre, status, progress, google_books_id, thumbnail_url)
+            INSERT INTO books (user_id, title, author, genre, status, current_page, google_books_id, thumbnail_url)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (session['user_id'], title, author, genre, status, progress, google_books_id, thumbnail_url))
+        ''', (session['user_id'], title, author, genre, status, current_page, google_books_id, thumbnail_url))
         conn.commit()
 
     return redirect(url_for('dashboard'))
@@ -117,11 +136,10 @@ def add_book():
 
 @app.route('/delete/<int:book_id>')
 def delete_book(book_id):
-    if 'user_id' not in session: # Ensure user is logged in before deleting
+    if 'user_id' not in session:
         return redirect(url_for('login'))
 
     with sqlite3.connect(DB_FILE) as conn:
-        # Added user_id to the WHERE clause to prevent users from deleting other users' books
         conn.execute("DELETE FROM books WHERE id = ? AND user_id = ?", (book_id, session['user_id']))
         conn.commit()
     return redirect(url_for('dashboard'))
