@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>My Books</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='clock.css') }}">
+  <script src="{{ url_for('static', filename='clock.js') }}"></script>
+  <script src="{{ url_for('static', filename='theme-toggle.js') }}"></script>
+</head>
+<body>
+  <div class="main-layout-container">
+    <div class="analog-clock">
+      <div class="hand hour-hand"></div>
+      <div class="hand minute-hand"></div>
+      <div class="hand second-hand"></div>
+      <div class="center-dot"></div>
+    </div>
+
+    <div class="main-content-area">
+      <div class="toggle-container">
+        <button id="darkModeToggle">🌓 Toggle Dark Mode</button>
+      </div>
+
+      <div class="dashboard-container">
+        <h2>Your Books</h2>
+
+        <div style="text-align: center; margin-bottom: 20px;">
+          <a href="{{ url_for('my_books', filter='all') }}" class="filter-button {% if current_filter == 'all' %}active-filter{% endif %}">All Books</a>
+          <a href="{{ url_for('my_books', filter='To Read') }}" class="filter-button {% if current_filter == 'To Read' %}active-filter{% endif %}">To Read</a>
+          <a href="{{ url_for('my_books', filter='Reading') }}" class="filter-button {% if current_filter == 'Reading' %}active-filter{% endif %}">Reading</a>
+          <a href="{{ url_for('my_books', filter='Read') }}" class="filter-button {% if current_filter == 'Read' %}active-filter{% endif %}">Read</a>
+        </div>
+
+        <ul>
+          {% for book in books %}
+            <li>
+              {% if book[8] %}
+                <img src="{{ book[8] }}" alt="Cover" class="thumbnail">
+              {% endif %}
+              <div>
+                <strong>{{ book[2] }}</strong> by {{ book[3] }} ({{ book[5] }}) —
+                {% if book[6] is not none and book[6] > 0 %}
+                  Current Page: {{ book[6] }}
+                {% else %}
+                  No page recorded
+                {% endif %}
+              </div>
+              <a href="/delete/{{ book[0] }}">Delete</a>
+            </li>
+          {% endfor %}
+        </ul>
+
+        <div style="text-align:center; margin-top: 20px;">
+          <a href="/dashboard" class="filter-button">Back to Dashboard</a> {# Consistent button style #}
+        </div>
+      </div>
+    </div> </div> <script>
+    // Moved toggleDarkMode logic to theme-toggle.js
+  </script>
+</body>
+</html>

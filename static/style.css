@@ -20,11 +20,8 @@ body {
   color: var(--text-light);
   padding: 0;
   transition: all 0.3s ease;
-  display: flex;
-  flex-direction: column;
-  align-items: center; /* Center horizontally for auth pages or general body */
-  justify-content: center; /* Center vertically for auth pages */
-  min-height: 100vh;
+  /* Removed: display: flex, align-items, justify-content, min-height from body */
+  min-height: 100vh; /* Ensure body takes full viewport height */
   box-sizing: border-box;
 }
 
@@ -33,135 +30,402 @@ body.dark-mode {
   color: var(--text-dark);
 }
 
+/* New: Main Layout Container */
+.main-layout-container {
+  display: flex;
+  min-height: 100vh; /* Ensure it takes full viewport height */
+  width: 100%;
+  box-sizing: border-box;
+  padding-left: 20px; /* Padding for the clock's left side */
+}
+
+/* Adjust clock position within the new layout */
+.analog-clock {
+  width: 100px;
+  height: 100px;
+  border: 4px solid var(--text-light);
+  border-radius: 50%;
+  position: sticky; /* Make it sticky so it scrolls with the page minimally or stays in view */
+  top: 20px; /* Position it from the top */
+  margin-right: 20px; /* Space between clock and content */
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  background-color: var(--card-bg-light);
+  transition: all 0.3s ease;
+  flex-shrink: 0; /* Prevent it from shrinking */
+  align-self: flex-start; /* Align it to the start of the cross-axis (top) */
+  /* float: left; - REMOVED, flexbox handles layout */
+}
+
+body.dark-mode .analog-clock {
+  border: 4px solid var(--text-dark);
+  box-shadow: 0 0 15px rgba(0,0,0,0.2);
+  background-color: var(--card-bg-dark);
+}
+
+/* Clock Hands */
+.hand {
+  position: absolute;
+  transform-origin: bottom;
+  background-color: var(--text-light);
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+body.dark-mode .hand {
+  background-color: var(--text-dark);
+}
+
+.hour-hand {
+  width: 4px;
+  height: 30px;
+  top: 20px;
+  left: 48px;
+}
+
+.minute-hand {
+  width: 3px;
+  height: 40px;
+  top: 10px;
+  left: 48.5px;
+}
+
+.second-hand {
+  width: 2px;
+  height: 45px;
+  top: 5px;
+  left: 49px;
+  background-color: var(--accent); /* Accent color for second hand */
+}
+
+body.dark-mode .second-hand {
+  background-color: var(--accent-hover);
+}
+
+/* Center Dot */
+.center-dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--accent);
+  border-radius: 50%;
+  position: absolute;
+  top: 46px;
+  left: 46px;
+  z-index: 10;
+}
+
+body.dark-mode .center-dot {
+  background-color: var(--accent-hover);
+}
+
+/* Main Content Area - This will take remaining space and center its content */
+.main-content-area {
+  flex-grow: 1; /* Allows it to take up remaining space */
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* Center content horizontally */
+  justify-content: center; /* Center content vertically, if there's extra space */
+  padding: 20px; /* Add some padding around the content */
+  box-sizing: border-box;
+}
+
+
+/* Auth Container (for login, register, forgot_password, index) */
+.auth-container {
+  width: 100%; /* Take full width of its parent (.main-content-area) */
+  max-width: 400px; /* Limit its max width */
+  padding: 20px;
+  background: var(--card-bg-light);
+  border-radius: 12px;
+  box-shadow: 0 0 15px rgba(0,0,0,0.1);
+  transition: background 0.3s ease;
+  box-sizing: border-box;
+  text-align: center; /* Center text within the container */
+}
+
+body.dark-mode .auth-container {
+  background: var(--card-bg-dark);
+  box-shadow: 0 0 20px rgba(0,0,0,0.3);
+}
+
+/* Dashboard Container */
+.dashboard-container {
+  max-width: 750px;
+  width: 100%; /* Take full width of its parent (.main-content-area) up to max-width */
+  padding: 20px;
+  background: var(--card-bg-light);
+  border-radius: 12px;
+  box-shadow: 0 0 15px rgba(0,0,0,0.1);
+  transition: background 0.3s ease;
+  box-sizing: border-box;
+  margin-top: 20px; /* Add some top margin to separate from the top of the viewport */
+  margin-bottom: 20px; /* Add some bottom margin */
+  /* Removed margin-left */
+}
+
+body.dark-mode .dashboard-container {
+  background: var(--card-bg-dark);
+  box-shadow: 0 0 20px rgba(0,0,0,0.3);
+}
+
 h2, h3 {
-  color: inherit;
-  margin-bottom: 16px;
-  text-align: center; /* Center headings */
+  color: var(--accent);
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+body.dark-mode h2, body.dark-mode h3 {
+  color: var(--accent-hover);
 }
 
 form {
-  margin-bottom: 24px;
   display: flex;
   flex-direction: column;
-  /* Removed: align-items: center; - This was centering children. Now they will left-align. */
-  gap: 12px;
-  width: 100%;
-  max-width: 350px;
-  padding: 20px;
-  background-color: var(--card-bg-light);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  transition: background-color 0.3s ease, box-shadow 0.3s ease;
-  box-sizing: border-box;
-  margin: 0 auto 24px auto; /* Added: Centers the form itself horizontally */
+  gap: 15px;
+  margin-bottom: 30px;
+  align-items: center; /* Center form elements horizontally within the form */
 }
 
-body.dark-mode form {
-  background-color: var(--card-bg-dark);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-}
-
-form label {
-  display: flex;
-  flex-direction: column;
-  /* Ensure align-items: center is not present here */
-  gap: 5px;
-  font-size: 0.95rem;
-  color: inherit;
-  width: 100%;
-}
-
-form input,
-form select {
-  padding: 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color-light);
-  background: var(--input-bg-light);
+label {
+  font-weight: bold;
   color: var(--text-light);
-  transition: all 0.2s ease;
-  width: 100%;
-  max-width: 280px;
-  box-sizing: border-box;
+  width: 100%; /* Make label take full width */
+  text-align: left; /* Align label text to left */
 }
 
-body.dark-mode form input,
-body.dark-mode form select {
-  background-color: var(--input-bg-dark);
-  border: 1px solid var(--border-color-dark);
+body.dark-mode label {
   color: var(--text-dark);
 }
 
-button {
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+select {
+  padding: 10px;
+  border: 1px solid var(--border-color-light);
+  border-radius: 6px;
+  font-size: 1rem;
+  width: 100%;
+  max-width: 350px; /* Limit input width for better appearance */
+  box-sizing: border-box;
+  background-color: var(--input-bg-light);
+  color: var(--text-light);
+  transition: all 0.2s ease;
+  margin-top: 5px; /* Space between label and input */
+}
+
+body.dark-mode input[type="text"],
+body.dark-mode input[type="password"],
+body.dark-mode input[type="email"],
+body.dark-mode input[type="number"],
+body.dark-mode select {
+  border-color: var(--border-color-dark);
+  background-color: var(--input-bg-dark);
+  color: var(--text-dark);
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus,
+input[type="number"]:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 5px rgba(107, 158, 125, 0.5);
+}
+
+button[type="submit"],
+.button-group a {
   background-color: var(--accent);
   color: white;
-  border: none;
   padding: 10px 20px;
+  border: none;
   border-radius: 8px;
+  font-size: 1rem;
   cursor: pointer;
   transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-  font-size: 1rem;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-  align-self: flex-start; /* Ensures button aligns with labels */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  text-decoration: none; /* For button-group a */
+  display: inline-block; /* For button-group a */
+  text-align: center; /* For button-group a */
 }
 
-button:hover {
+button[type="submit"]:hover,
+.button-group a:hover {
   background-color: var(--accent-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+  box-shadow: 0 3px 6px rgba(0,0,0,0.15);
 }
 
-button:disabled {
-  background-color: #cccccc;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
+ul {
+  list-style: none;
+  padding: 0;
+  width: 100%; /* Ensure list takes full width for consistent alignment */
 }
 
-a {
+li {
+  background: var(--input-bg-light);
+  border: 1px solid var(--border-color-light);
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  transition: all 0.2s ease;
+  text-align: left; /* Ensure text alignment within list item */
+}
+
+body.dark-mode li {
+  background: var(--input-bg-dark);
+  border-color: var(--border-color-dark);
+  box-shadow: 0 1px 5px rgba(0,0,0,0.2);
+}
+
+li:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+li div {
+  flex-grow: 1;
+}
+
+li a {
   color: var(--accent);
   text-decoration: none;
-  margin-right: 12px;
-  transition: color 0.2s ease, text-decoration 0.2s ease;
+  font-weight: bold;
 }
 
-a:hover {
+li a:hover {
   text-decoration: underline;
   color: var(--accent-hover);
 }
 
-ul {
-  padding-left: 0;
+.flash-messages {
   list-style: none;
+  padding: 0;
+  margin-bottom: 20px;
   width: 100%;
-  max-width: 750px;
-  margin: 20px auto;
+  text-align: center;
 }
 
-li {
-  background: var(--card-bg-light);
-  margin: 12px 0;
-  padding: 12px;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  transition: background-color 0.3s ease;
+.flashes { /* Corrected class name as per your HTML */
+  list-style: none;
+  padding: 0;
+  margin-bottom: 20px;
+  width: 100%;
+  text-align: center;
 }
 
-body.dark-mode li {
-  background: var(--card-bg-dark);
-}
-
-img {
+.flashes li {
+  padding: 10px;
   border-radius: 6px;
-  height: 80px;
-  width: auto;
-  object-fit: cover;
-  flex-shrink: 0;
+  margin-bottom: 10px;
+  font-weight: bold;
 }
 
-/* Dark mode toggle */
+.flashes .success {
+  background-color: #d4edda;
+  color: #155724;
+  border-color: #c3e6cb;
+}
+
+.flashes .danger {
+  background-color: #f8d7da;
+  color: #721c24;
+  border-color: #f5c6cb;
+}
+
+.flashes .info {
+  background-color: #d1ecf1;
+  color: #0c5460;
+  border-color: #bee5eb;
+}
+
+.link {
+  margin-top: 15px;
+  font-size: 0.9rem;
+}
+
+.link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.link a:hover {
+  text-decoration: underline;
+  color: var(--accent-hover);
+}
+
+#currentPageLabel {
+  transition: opacity 0.3s ease, pointer-events 0.3s ease;
+}
+
+.thumbnail {
+  width: 60px;
+  height: auto;
+  border-radius: 4px;
+  margin-right: 10px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* Autocomplete Suggestions */
+#suggestionBox {
+  position: absolute;
+  border: 1px solid var(--border-color-light);
+  max-height: 200px;
+  overflow-y: auto;
+  background-color: var(--card-bg-light);
+  z-index: 100;
+  width: calc(100% - 2px); /* Adjust based on input width and border */
+  box-sizing: border-box;
+  border-radius: 6px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  left: 0; /* Align to the left of the input */
+}
+
+body.dark-mode #suggestionBox {
+  border: 1px solid var(--border-color-dark);
+  background-color: var(--card-bg-dark);
+  color: var(--text-dark);
+}
+
+.suggestion-item {
+  padding: 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color-light);
+}
+
+body.dark-mode .suggestion-item {
+  border-bottom: 1px solid var(--border-color-dark);
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.suggestion-item:hover {
+  background-color: var(--accent);
+  color: white;
+}
+
+body.dark-mode .suggestion-item:hover {
+  background-color: var(--accent-hover);
+  color: white;
+}
+
+.suggestion-item img {
+  vertical-align: middle;
+  margin-right: 10px;
+  border-radius: 2px;
+}
+
+
+/* Toggle Button */
 .toggle-container {
   position: absolute;
   top: 20px;
@@ -186,53 +450,65 @@ img {
   box-shadow: none;
 }
 
-/* Centering for auth pages (index, login, register) */
-.auth-container {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  width: 100%;
-  box-sizing: border-box;
-}
-
 .button-group {
   display: flex;
   gap: 16px;
   margin-top: 20px;
+  justify-content: center;
 }
 
 .button-group a {
   padding: 10px 20px;
   border-radius: 8px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-  background: var(--accent);
-  color: white;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
-.button-group a:hover {
-  background: var(--accent-hover);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+/* Filter buttons for My Books page */
+.filter-button {
+  background-color: var(--accent);
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  font-size: 0.9rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  text-decoration: none; /* Override default link styling */
+  display: inline-block; /* Allow padding and margin */
+}
+
+.filter-button:hover {
+  background-color: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0,0,0,0.15);
   text-decoration: none;
 }
 
-/* Dashboard specific container */
-.dashboard-container {
-  max-width: 750px;
-  margin: 0px auto;
-  padding: 20px;
-  background: var(--card-bg-light);
-  border-radius: 12px;
-  box-shadow: 0 0 15px rgba(0,0,0,0.1);
-  transition: background 0.3s ease;
-  width: 100%;
-  box-sizing: border-box;
-  margin-top: 50px;
-  margin-bottom: 40px;
+.filter-button.active-filter {
+  background-color: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+  border: 1px solid white; /* Indicate active state */
 }
 
-body.dark-mode .dashboard-container {
-  background: var(--card-bg-dark);
+body.dark-mode .filter-button.active-filter {
+  border: 1px solid var(--text-dark);
+}
+
+/* Ensure autocomplete input is positioned correctly */
+form label {
+    position: relative; /* Make label a positioning context for suggestion box */
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start; /* Align label text to the left */
+    width: 100%; /* Make label take full width for consistency */
+}
+
+/* Adjust input within the label to ensure it's centered if needed,
+   but mainly to adhere to max-width */
+form label input {
+    width: 100%; /* Fill the label's width */
+    max-width: 350px; /* Keep the max-width restriction */
+    align-self: center; /* Center the input within the label's available space if label is wider */
 }

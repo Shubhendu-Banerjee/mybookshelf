@@ -5,19 +5,31 @@
   <title>Welcome to MyBookShelf</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script src="{{ url_for('static', filename='theme-toggle.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='clock.css') }}">
+  <script src="{{ url_for('static', filename='clock.js') }}"></script>
+  <script src="{{ url_for('static', filename='theme-toggle.js') }}"></script> {# Added theme-toggle.js #}
 </head>
 <body>
-  <div class="toggle-container">
-    <button id="darkModeToggle">🌓 Toggle Dark Mode</button>
-  </div>
-  <div class="auth-container">
-    <h2>Welcome to MyBookShelf 📚</h2>
-    <p>Organize your reading journey with ease.</p>
-    <div class="button-group">
-      <a href="{{ url_for('login') }}">Login</a>
-      <a href="{{ url_for('register') }}">Register</a>
+  <div class="main-layout-container">
+    <div class="analog-clock">
+      <div class="hand hour-hand"></div>
+      <div class="hand minute-hand"></div>
+      <div class="hand second-hand"></div>
+      <div class="center-dot"></div>
     </div>
-  </div>
+
+    <div class="main-content-area">
+      <div class="toggle-container">
+        <button id="darkModeToggle">🌓 Toggle Dark Mode</button> {# Removed onclick #}
+      </div>
+      <div class="auth-container">
+        <h2>Welcome to MyBookShelf 📚</h2>
+        <p>Organize your reading journey with ease.</p>
+        <div class="button-group">
+          <a href="{{ url_for('login') }}">Login</a>
+          <a href="{{ url_for('register') }}">Register</a>
+        </div>
+      </div>
+    </div> </div> {# Removed inline script for dark mode #}
 </body>
 </html>

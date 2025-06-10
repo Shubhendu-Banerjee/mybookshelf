@@ -1,10 +1,4 @@
-## MyBookShelf – Full-Stack Web App
-
-# Note: This is a simplified version using Flask + SQLite for ease of understanding and deployment.
-
-# ------------------------
-# File: app.py
-# ------------------------
+# app.py (Modifications for my_books route)
 
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 import sqlite3
@@ -12,7 +6,7 @@ import os
 from werkzeug.security import generate_password_hash, check_password_hash
 import secrets
 from datetime import datetime, timedelta
-from flask_mail import Mail, Message # Added for email functionality
+from flask_mail import Mail, Message
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key' # IMPORTANT: Change this to a strong, random key in production
@@ -20,58 +14,83 @@ app.secret_key = 'your_secret_key' # IMPORTANT: Change this to a strong, random 
 DB_FILE = 'books.db'
 
 # --- Flask-Mail Configuration ---
-# IMPORTANT: Replace these with your actual email server details and credentials.
-# For production, consider using environment variables (e.g., os.environ.get('MAIL_USERNAME'))
 app.config['MAIL_SERVER'] = 'smtp.gmail.com' # e.g., 'smtp.gmail.com' for Gmail
 app.config['MAIL_PORT'] = 587 # e.g., 587 for TLS, 465 for SSL
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USE_SSL'] = False # Set to True if using port 465 (SSL)
-app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME') or 'shubhendu.banerjee3107@gmail.com' # Your actual email
-app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD') or 'ejhy krxf eomn czbd' # Your email password or app password
-app.config['MAIL_DEFAULT_SENDER'] = ('MyBookShelf App', app.config['MAIL_USERNAME']) # Sender name and email
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME') or 'shubhendu.banerjee3107@gmail.com'
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD') or 'your_email_password' # Use environment variable
+mail = Mail(app)
 
-mail = Mail(app) # Initialize Flask-Mail
+def get_db_connection():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row # This allows access to columns by name
+    return conn
 
-# Initialize database
 def init_db():
-    with sqlite3.connect(DB_FILE) as conn:
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS users (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        username TEXT UNIQUE,
-                        password TEXT,
-                        email TEXT UNIQUE
-                    )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS books (
+    with get_db_connection() as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                title TEXT,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL
+            );
+        ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS books (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
                 author TEXT,
                 genre TEXT,
-                status TEXT,
-                progress INTEGER DEFAULT 0,
+                status TEXT NOT NULL,
+                current_page INTEGER,
                 google_books_id TEXT,
-                thumbnail_url TEXT
-            )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens (
-                        token TEXT PRIMARY KEY,
-                        user_id INTEGER,
-                        expiry_time DATETIME,
-                        FOREIGN KEY (user_id) REFERENCES users(id)
-                    )''')
+                thumbnail_url TEXT,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            );
+        ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                token TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                expiry_time TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            );
+        ''')
         conn.commit()
 
-init_db()
+# Initialize the database when the app starts
+with app.app_context():
+    init_db()
 
-# ------------------------
-# Routes
-# ------------------------
+@app.before_request
+def require_login():
+    # List of routes that do not require login
+    allowed_routes = ['login', 'register', 'index', 'static', 'forgot_password', 'reset_password']
+    if request.endpoint not in allowed_routes and 'user_id' not in session:
+        return redirect(url_for('login'))
 
 @app.route('/')
 def index():
-    if 'user_id' in session:
-        return redirect(url_for('dashboard'))
     return render_template('index.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        with get_db_connection() as conn:
+            user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+        if user and check_password_hash(user['password'], password):
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            flash('Login successful!', 'success')
+            return redirect(url_for('dashboard'))
+        else:
+            flash('Invalid username or password', 'danger')
+    return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -81,147 +100,59 @@ def register():
         email = request.form['email']
         hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
 
-        with sqlite3.connect(DB_FILE) as conn:
+        with get_db_connection() as conn:
             try:
-                conn.execute("INSERT INTO users (username, password, email) VALUES (?, ?, ?)",
+                conn.execute('INSERT INTO users (username, password, email) VALUES (?, ?, ?)',
                              (username, hashed_password, email))
                 conn.commit()
                 flash('Registration successful! Please log in.', 'success')
                 return redirect(url_for('login'))
             except sqlite3.IntegrityError:
                 flash('Username or Email already exists.', 'danger')
-                return render_template('register.html')
     return render_template('register.html')
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        with sqlite3.connect(DB_FILE) as conn:
-            user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-        
-        if user and check_password_hash(user[2], password):
-            session['user_id'] = user[0]
-            session['username'] = user[1]
-            flash('Logged in successfully!', 'success')
-            return redirect(url_for('dashboard'))
-        else:
-            flash('Invalid username or password.', 'danger')
-    return render_template('login.html')
-
-@app.route('/dashboard')
-def dashboard():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    with sqlite3.connect(DB_FILE) as conn:
-        books = conn.execute("SELECT * FROM books WHERE user_id = ?", (session['user_id'],)).fetchall()
-    return render_template('dashboard.html', books=books)
-
-@app.route('/add', methods=['POST'])
-def add_book():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-
-    title = request.form['title']
-    author = request.form['author']
-    genre = request.form['genre']
-    status = request.form['status']
-    current_page = int(request.form.get('current_page', 0))
-    google_books_id = request.form.get('google_books_id', None)
-    thumbnail_url = request.form.get('thumbnail_url', None)
-
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute('''
-            INSERT INTO books (user_id, title, author, genre, status, progress, google_books_id, thumbnail_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (session['user_id'], title, author, genre, status, current_page, google_books_id, thumbnail_url))
-        conn.commit()
-
-    flash('Book added successfully!', 'success')
-    return redirect(url_for('dashboard'))
-
-
-@app.route('/delete/<int:book_id>')
-def delete_book(book_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute("DELETE FROM books WHERE id = ? AND user_id = ?", (book_id, session['user_id']))
-        conn.commit()
-    flash('Book deleted successfully.', 'info')
-    return redirect(url_for('dashboard'))
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    flash('You have been logged out.', 'info')
-    return redirect(url_for('index'))
-
-# --- Forgot Password Routes ---
 
 @app.route('/forgot_password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'POST':
         email = request.form['email']
-        with sqlite3.connect(DB_FILE) as conn:
-            user = conn.execute("SELECT id, username FROM users WHERE email = ?", (email,)).fetchone()
+        with get_db_connection() as conn:
+            user = conn.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
         
         if user:
-            user_id = user[0]
             token = secrets.token_urlsafe(32)
-            expiry_time = datetime.now() + timedelta(hours=1)
-
-            with sqlite3.connect(DB_FILE) as conn:
-                conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", (user_id,))
-                conn.execute("INSERT INTO password_reset_tokens (token, user_id, expiry_time) VALUES (?, ?, ?)",
-                             (token, user_id, expiry_time))
+            expiry_time = datetime.now() + timedelta(hours=1) # Token valid for 1 hour
+            
+            with get_db_connection() as conn:
+                conn.execute('INSERT INTO password_reset_tokens (token, user_id, expiry_time) VALUES (?, ?, ?)',
+                             (token, user['id'], expiry_time))
                 conn.commit()
             
             reset_link = url_for('reset_password', token=token, _external=True)
             
-            # --- EMAIL SENDING VIA FLASK-MAIL ---
             msg = Message("Password Reset Request for MyBookShelf",
-                          sender=app.config['MAIL_DEFAULT_SENDER'],
+                          sender=app.config['MAIL_USERNAME'],
                           recipients=[email])
-            msg.body = f"""
-Hello {user[1]},
-
-You have requested a password reset for your MyBookShelf account.
-Please click on the following link to reset your password:
-
-{reset_link}
-
-This link will expire in 1 hour. If you did not request a password reset, please ignore this email.
-
-Thank You,
-MyBookShelf Team
-"""
+            msg.body = f"Hello {user['username']},\n\nYou have requested a password reset for your MyBookShelf account. Please click on the following link to reset your password:\n\n{reset_link}\n\nIf you did not request this, please ignore this email.\n\nBest regards,\nMyBookShelf Team"
+            
             try:
                 mail.send(msg)
-                flash('A password reset link has been sent to your email. Please check your inbox.', 'info')
+                flash('A password reset link has been sent to your email address.', 'info')
             except Exception as e:
-                print(f"Error sending email: {e}") # Log error for debugging
-                flash('There was an error sending the password reset email. Please try again later.', 'danger')
-            
-            return redirect(url_for('login'))
+                flash(f'Failed to send email. Please try again later. Error: {e}', 'danger')
         else:
-            flash('If an account with that email exists, a password reset link has been sent to your email.', 'info')
-            return render_template('forgot_password.html')
-
+            flash('No account found with that email address.', 'danger')
     return render_template('forgot_password.html')
 
 @app.route('/reset_password/<token>', methods=['GET', 'POST'])
 def reset_password(token):
-    with sqlite3.connect(DB_FILE) as conn:
-        reset_token = conn.execute("SELECT user_id, expiry_time FROM password_reset_tokens WHERE token = ?", (token,)).fetchone()
+    with get_db_connection() as conn:
+        reset_token_data = conn.execute('SELECT user_id, expiry_time FROM password_reset_tokens WHERE token = ?', (token,)).fetchone()
 
-    if not reset_token:
+    if not reset_token_data:
         flash('Invalid or expired password reset link.', 'danger')
         return redirect(url_for('login'))
     
-    user_id, expiry_time_str = reset_token
+    user_id, expiry_time_str = reset_token_data
     expiry_time = datetime.strptime(expiry_time_str, '%Y-%m-%d %H:%M:%S.%f')
 
     if datetime.now() > expiry_time:
@@ -241,15 +172,101 @@ def reset_password(token):
         
         hashed_password = generate_password_hash(new_password, method='pbkdf2:sha256')
 
-        with sqlite3.connect(DB_FILE) as conn:
+        with get_db_connection() as conn:
             conn.execute("UPDATE users SET password = ? WHERE id = ?", (hashed_password, user_id))
             conn.execute("DELETE FROM password_reset_tokens WHERE token = ?", (token,))
             conn.commit()
         
         flash('Your password has been reset successfully. Please log in with your new password.', 'success')
         return redirect(url_for('login'))
-    
+        
     return render_template('reset_password.html', token=token)
+
+@app.route('/dashboard')
+def dashboard():
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('login'))
+    
+    # Removed books fetching from dashboard
+    # with get_db_connection() as conn:
+    #     books = conn.execute('SELECT * FROM books WHERE user_id = ? ORDER BY title', (user_id,)).fetchall()
+    
+    return render_template('dashboard.html') # Removed books=books from render_template
+
+@app.route('/add', methods=['POST'])
+def add_book():
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('login'))
+
+    title = request.form['title']
+    author = request.form.get('author')
+    genre = request.form.get('genre')
+    status = request.form['status']
+    current_page = request.form.get('current_page')
+    google_books_id = request.form.get('google_books_id')
+    thumbnail_url = request.form.get('thumbnail_url')
+
+    if not title:
+        flash('Title is required!', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    if status == 'Reading' and (current_page is None or not current_page.isdigit() or int(current_page) < 0):
+        flash('Current page must be a non-negative number if status is "Reading".', 'danger')
+        return redirect(url_for('dashboard'))
+    elif status != 'Reading':
+        current_page = 0 # Reset to 0 if not reading
+
+    with get_db_connection() as conn:
+        conn.execute('INSERT INTO books (user_id, title, author, genre, status, current_page, google_books_id, thumbnail_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                     (user_id, title, author, genre, status, int(current_page), google_books_id, thumbnail_url))
+        conn.commit()
+    flash('Book added successfully!', 'success')
+    return redirect(url_for('dashboard'))
+
+@app.route('/delete/<int:book_id>')
+def delete_book(book_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('login'))
+    
+    with get_db_connection() as conn:
+        # Ensure the user owns the book before deleting
+        book = conn.execute('SELECT * FROM books WHERE id = ? AND user_id = ?', (book_id, user_id)).fetchone()
+        if book:
+            conn.execute('DELETE FROM books WHERE id = ?', (book_id,))
+            conn.commit()
+            flash('Book deleted successfully!', 'success')
+        else:
+            flash('Book not found or you do not have permission to delete it.', 'danger')
+    return redirect(url_for('my_books')) # Redirect to my_books page after deletion
+
+@app.route('/my_books')
+@app.route('/my_books/<filter>') # Added filter parameter
+def my_books(filter='all'): # Default filter is 'all'
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    if filter == 'all':
+        books = conn.execute('SELECT * FROM books WHERE user_id = ? ORDER BY title', (user_id,)).fetchall()
+    elif filter in ['To Read', 'Reading', 'Read']: # Ensure these match your select options
+        books = conn.execute('SELECT * FROM books WHERE user_id = ? AND status = ? ORDER BY title', (user_id, filter)).fetchall()
+    else: # Fallback for invalid filter
+        flash('Invalid filter option. Showing all books.', 'info')
+        books = conn.execute('SELECT * FROM books WHERE user_id = ? ORDER BY title', (user_id,)).fetchall()
+    conn.close()
+
+    return render_template('my_books.html', books=books, current_filter=filter) # Pass current_filter to template
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    session.pop('username', None)
+    flash('You have been logged out.', 'info')
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(debug=True)
