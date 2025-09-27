@@ -625,6 +625,300 @@ html.dark-mode .stats-box {
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 
+.search-form {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 30px;
+    align-items: flex-end;
+}
+
+.search-form label {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    font-weight: bold;
+}
+
+.search-form input[type="text"] {
+    padding: 10px;
+    border: 1px solid var(--border-color-light);
+    border-radius: 6px;
+    margin-top: 5px;
+    background: var(--input-bg-light);
+    color: var(--text-light);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+html.dark-mode .search-form input[type="text"] {
+    border-color: var(--border-color-dark);
+    background: var(--input-bg-dark);
+    color: var(--text-dark);
+}
+
+.book-results-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.book-card-public {
+    display: flex;
+    background: var(--card-bg-light);
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    transition: box-shadow 0.3s ease;
+    border: 1px solid var(--border-color-light);
+    gap: 20px;
+}
+
+html.dark-mode .book-card-public {
+    background: var(--card-bg-dark);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+    border-color: var(--border-color-dark);
+}
+
+.book-cover-container {
+    flex-shrink: 0;
+    width: 100px;
+    height: 150px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+}
+
+.book-cover-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.no-cover {
+    background-color: var(--border-color-light);
+    color: var(--text-light);
+    text-align: center;
+    line-height: 150px;
+    font-size: 0.9em;
+    width: 100%;
+    height: 100%;
+}
+
+html.dark-mode .no-cover {
+    background-color: var(--border-color-dark);
+    color: var(--text-dark);
+}
+
+.book-info-public {
+    flex-grow: 1;
+}
+
+.book-info-public h3 {
+    margin-top: 0;
+    margin-bottom: 5px;
+    font-size: 1.4em;
+    color: var(--accent);
+}
+
+.book-actions-public {
+    margin-top: 15px;
+    display: flex;
+    gap: 10px;
+}
+
+.add-book-form {
+    display: inline-block;
+}
+
+.add-book-btn, .preview-btn {
+    font-size: 0.85em;
+    padding: 8px 15px;
+}
+
+.secondary-button {
+    background-color: var(--border-color-light);
+    color: var(--text-light);
+}
+
+html.dark-mode .secondary-button {
+    background-color: var(--border-color-dark);
+    color: var(--text-dark);
+}
+
+.placeholder-text, .loading-text, .error-text {
+    text-align: center;
+    padding: 20px;
+    font-style: italic;
+    color: var(--text-light);
+}
+
+html.dark-mode .placeholder-text, 
+html.dark-mode .loading-text, 
+html.dark-mode .error-text {
+    color: var(--text-dark);
+}
+
+.error-text {
+    color: #cc0000;
+    font-weight: bold;
+}
+
+@media (max-width: 600px) {
+    .book-card-public {
+        flex-direction: column;
+        align-items: center;
+    }
+    .book-cover-container {
+        width: 100px;
+        height: 150px;
+    }
+    .book-actions-public {
+        flex-direction: column;
+    }
+}
+
+/* --- Public Book Reader Styles (read_public.html) --- */
+.reader-container {
+    padding: 20px;
+    line-height: 1.6;
+    font-size: 1.1em;
+    max-width: 800px;
+    margin: 0 auto;
+    background: var(--card-bg-light);
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+html.dark-mode .reader-container {
+    background: var(--card-bg-dark);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+
+.reader-container h2 {
+    text-align: center;
+    color: var(--accent);
+    margin-top: 30px;
+    margin-bottom: 20px;
+}
+
+.book-content-display {
+    border-top: 1px solid var(--border-color-light);
+    padding-top: 20px;
+    white-space: pre-wrap; 
+}
+
+html.dark-mode .book-content-display {
+    border-top: 1px solid var(--border-color-dark);
+}
+
+.book-content-display a {
+    color: var(--accent-hover);
+    text-decoration: none;
+}
+
+/* --- Preview Modal Styles --- */
+
+/* The Modal (background) */
+.modal {
+    display: none; 
+    position: fixed; 
+    z-index: 100; 
+    left: 0;
+    top: 0;
+    width: 100%; 
+    height: 100%; 
+    overflow: auto; 
+    background-color: rgba(0,0,0,0.7); 
+}
+
+/* Modal Content/Box */
+.modal-content {
+    background-color: var(--card-bg-light);
+    margin: 10% auto; 
+    padding: 20px;
+    border: 1px solid var(--border-color-light);
+    border-radius: 12px;
+    width: 80%; 
+    max-width: 700px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    position: relative;
+    max-height: 80vh; 
+    overflow-y: auto;
+}
+
+html.dark-mode .modal-content {
+    background-color: var(--card-bg-dark);
+    border-color: var(--border-color-dark);
+}
+
+.modal-content h3 {
+    margin-top: 0;
+    border-bottom: 1px solid var(--border-color-light);
+    padding-bottom: 10px;
+}
+
+html.dark-mode .modal-content h3 {
+    border-bottom: 1px solid var(--border-color-dark);
+}
+
+/* The Close Button */
+.close-button {
+    color: var(--text-light);
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+}
+
+html.dark-mode .close-button {
+    color: var(--text-dark);
+}
+
+.close-button:hover,
+.close-button:focus {
+    color: #cc0000;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+/* Content Area inside modal */
+#modalContent {
+    max-height: 55vh; 
+    overflow-y: auto;
+    padding: 10px 0;
+    line-height: 1.5;
+    font-size: 1em;
+}
+
+.modal-actions {
+    text-align: right;
+    padding-top: 15px;
+    border-top: 1px solid var(--border-color-light);
+    margin-top: 10px;
+}
+
+html.dark-mode .modal-actions {
+    border-top: 1px solid var(--border-color-dark);
+}
+
+.preview-note {
+    font-style: italic;
+    color: #999;
+    text-align: center;
+    padding: 10px;
+    border-top: 1px dashed #eee;
+    margin-top: 15px;
+}
+
+html.dark-mode .preview-note {
+    color: #888;
+    border-top: 1px dashed #444;
+}
+
 /* Ensure autocomplete input is positioned correctly */
 form label {
     position: relative; /* Make label a positioning context for suggestion box */

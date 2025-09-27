@@ -1,4 +1,4 @@
-# app.py (Modifications for my_books route)
+# app.py
 
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 import sqlite3
@@ -7,6 +7,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import secrets
 from datetime import datetime, timedelta
 from flask_mail import Mail, Message
+import requests # NEW IMPORT for Gutendex API
+import re # NEW IMPORT for HTML cleaning
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key' # IMPORTANT: Change this to a strong, random key in production
@@ -37,6 +39,7 @@ def init_db():
                 email TEXT UNIQUE NOT NULL
             );
         ''')
+        # Original Schema with new 'gutenberg_url' added.
         conn.execute('''
             CREATE TABLE IF NOT EXISTS books (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,11 +49,18 @@ def init_db():
                 genre TEXT,
                 status TEXT NOT NULL,
                 current_page INTEGER,
-                google_books_id TEXT,
+                google_books_id TEXT,       -- Kept for existing autocomplete integration
                 thumbnail_url TEXT,
+                gutenberg_url TEXT,         -- NEW: For free ebook content URL
                 FOREIGN KEY (user_id) REFERENCES users (id)
             );
         ''')
+        # Add the new column without crashing if the table already exists (safeguard)
+        try:
+            conn.execute("ALTER TABLE books ADD COLUMN gutenberg_url TEXT;")
+        except sqlite3.OperationalError:
+            pass
+            
         conn.execute('''
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
                 token TEXT PRIMARY KEY,
@@ -67,8 +77,9 @@ with app.app_context():
 
 @app.before_request
 def require_login():
-    # List of routes that do not require login
-    allowed_routes = ['login', 'register', 'index', 'static', 'forgot_password', 'reset_password']
+    # UPDATED: Added new routes for the public search/view feature
+    allowed_routes = ['login', 'register', 'index', 'static', 'forgot_password', 'reset_password', 
+                      'search_public_books', 'api_search_books', 'view_book', 'api_preview_book']
     if request.endpoint not in allowed_routes and 'user_id' not in session:
         return redirect(url_for('login'))
 
@@ -151,13 +162,13 @@ def reset_password(token):
     if not reset_token_data:
         flash('Invalid or expired password reset link.', 'danger')
         return redirect(url_for('login'))
-    
+
     user_id, expiry_time_str = reset_token_data
     expiry_time = datetime.strptime(expiry_time_str, '%Y-%m-%d %H:%M:%S.%f')
 
     if datetime.now() > expiry_time:
         flash('Password reset link has expired. Please request a new one.', 'danger')
-        with sqlite3.connect(DB_FILE) as conn:
+        with get_db_connection() as conn:
             conn.execute("DELETE FROM password_reset_tokens WHERE token = ?", (token,))
             conn.commit()
         return redirect(url_for('login'))
@@ -169,17 +180,17 @@ def reset_password(token):
         if new_password != confirm_password:
             flash('Passwords do not match.', 'danger')
             return render_template('reset_password.html', token=token)
-        
+
         hashed_password = generate_password_hash(new_password, method='pbkdf2:sha256')
 
         with get_db_connection() as conn:
             conn.execute("UPDATE users SET password = ? WHERE id = ?", (hashed_password, user_id))
             conn.execute("DELETE FROM password_reset_tokens WHERE token = ?", (token,))
             conn.commit()
-        
+
         flash('Your password has been reset successfully. Please log in with your new password.', 'success')
         return redirect(url_for('login'))
-        
+
     return render_template('reset_password.html', token=token)
 
 @app.route('/dashboard')
@@ -187,56 +198,219 @@ def dashboard():
     user_id = session.get('user_id')
     if not user_id:
         return redirect(url_for('login'))
-    
     return render_template('dashboard.html')
 
 @app.route('/add', methods=['POST'])
+@app.route('/add_book', methods=['POST'])
 def add_book():
     user_id = session.get('user_id')
     if not user_id:
+        flash('You must be logged in to add books.', 'danger')
         return redirect(url_for('login'))
-
-    title = request.form['title']
-    author = request.form.get('author')
-    genre = request.form.get('genre')
-    status = request.form['status']
-    current_page = request.form.get('current_page')
-    google_books_id = request.form.get('google_books_id')
-    thumbnail_url = request.form.get('thumbnail_url')
+    
+    title = request.form.get('title', '').strip()
+    author = request.form.get('author', 'Unknown Author').strip()
+    genre = request.form.get('genre', '').strip()
+    status = request.form.get('status', 'To Read').strip()
+    current_page = request.form.get('current_page', 0)
+    
+    # ISOLATED API DATA HANDLING: Handles data from both autocomplete (Google Books) and the new search (Gutendex)
+    google_books_id = request.form.get('google_books_id', None) 
+    thumbnail_url = request.form.get('thumbnail_url', None)     
+    gutenberg_url = request.form.get('gutenberg_url', None)     
 
     if not title:
-        flash('Title is required!', 'danger')
+        flash('Book title is required.', 'danger')
         return redirect(url_for('dashboard'))
-    
-    if status == 'Reading' and (current_page is None or not current_page.isdigit() or int(current_page) < 0):
-        flash('Current page must be a non-negative number if status is "Reading".', 'danger')
-        return redirect(url_for('dashboard'))
-    elif status != 'Reading':
-        current_page = 0 # Reset to 0 if not reading
 
-    with get_db_connection() as conn:
-        conn.execute('INSERT INTO books (user_id, title, author, genre, status, current_page, google_books_id, thumbnail_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                     (user_id, title, author, genre, status, int(current_page), google_books_id, thumbnail_url))
+    try:
+        current_page = int(current_page)
+    except ValueError:
+        current_page = 0
+        
+    try:
+        conn = get_db_connection()
+        conn.execute(
+            '''INSERT INTO books (
+                user_id, title, author, genre, status, current_page, 
+                google_books_id, thumbnail_url, gutenberg_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (user_id, title, author, genre, status, current_page, 
+             google_books_id, thumbnail_url, gutenberg_url)
+        )
         conn.commit()
-    flash('Book added successfully!', 'success')
+        conn.close()
+        flash(f'"{title}" by {author} added to your list!', 'success')
+    except sqlite3.Error as e:
+        flash(f'Database error: {e}', 'danger')
+
+    # Redirect logic: if added from search_public, go to my_books, else dashboard
+    if gutenberg_url:
+        return redirect(url_for('my_books'))
     return redirect(url_for('dashboard'))
 
-@app.route('/delete/<int:book_id>')
-def delete_book(book_id):
+
+# --- HELPER FUNCTION FOR CONTENT CLEANING ---
+def clean_gutenberg_html(html_content):
+    """
+    Cleans up Project Gutenberg's boilerplate HTML to isolate the book's text.
+    """
+    # 1. Strip everything before the START marker 
+    start_marker_pattern = re.compile(r'\*\*\* START OF (THE PROJECT GUTENBERG EBOOK|THIS PROJECT GUTENBERG EDITION) .*? \*\*\*', re.DOTALL | re.IGNORECASE)
+    match_start = start_marker_pattern.search(html_content)
+    if match_start:
+        html_content = html_content[match_start.end():]
+
+    # 2. Strip everything after the END marker 
+    end_marker_pattern = re.compile(r'\*\*\* END OF (THE PROJECT GUTENBERG EBOOK|THIS PROJECT GUTENBERG EDITION) .*? \*\*\*', re.DOTALL | re.IGNORECASE)
+    match_end = end_marker_pattern.search(html_content)
+    if match_end:
+        html_content = html_content[:match_end.start()]
+    
+    # 3. Aggressive removal of all script/style tags, and unwanted top-level tags
+    html_content = re.sub(r'<script\b[^>]*>.*?</script>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+    html_content = re.sub(r'<style\b[^>]*>.*?</style>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+    html_content = re.sub(r'</?(html|body|head|meta|link)\b[^>]*>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+    
+    return html_content
+
+
+# --- NEW ROUTES FOR PUBLIC BOOK SEARCH (Gutendex API) ---
+
+@app.route('/search_public_books')
+def search_public_books():
+    """Renders the free public book search page."""
+    if not session.get('user_id'):
+        return redirect(url_for('login'))
+    return render_template('search_public.html')
+
+@app.route('/api/search_books')
+def api_search_books():
+    """API endpoint to proxy search requests to the Gutendex API."""
+    if not session.get('user_id'):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    query = request.args.get('q')
+    if not query:
+        return jsonify({'error': 'Search query is missing'}), 400
+
+    GUTENDEX_API_URL = 'https://gutendex.com/books/'
+
+    try:
+        params = {
+            'search': query,
+            'mime_type': 'text/html', # Filter results to only those available in HTML format
+            'sort': 'popular',
+            'languages': 'en' # Limit to English for better results
+        }
+
+        response = requests.get(GUTENDEX_API_URL, params=params)
+        response.raise_for_status()
+        data = response.json()
+        
+        books = []
+        for item in data.get('results', []):
+            
+            # Find the direct HTML link
+            html_link = item['formats'].get('text/html; charset=utf-8') or item['formats'].get('text/html')
+            
+            if not html_link:
+                continue 
+            
+            authors = [author['name'] for author in item.get('authors', [])]
+            thumbnail_url = item['formats'].get('image/jpeg') 
+            
+            book = {
+                'id': item.get('id'),
+                'title': item.get('title'),
+                'author': ', '.join(authors) or 'Unknown Author',
+                'gutenberg_url': html_link, 
+                'thumbnail_url': thumbnail_url,
+                'subjects': item.get('subjects', [])
+            }
+            
+            books.append(book)
+            
+        return jsonify({'success': True, 'books': books})
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({'error': 'Failed to connect to the Gutendex API or network error.'}), 500
+
+
+@app.route('/api/preview_book', methods=['POST'])
+def api_preview_book():
+    """NEW: Fetches and cleans a snippet of book content for the Preview modal."""
+    if not session.get('user_id'):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    gutenberg_url = request.json.get('gutenberg_url')
+
+    if not gutenberg_url:
+        return jsonify({'error': 'Gutenberg URL is required for preview.'}), 400
+
+    try:
+        # Fetch the content with a short timeout
+        response = requests.get(gutenberg_url, timeout=10)
+        response.raise_for_status()
+        
+        raw_html = response.text
+        
+        # Clean the HTML content (using existing function)
+        cleaned_content = clean_gutenberg_html(raw_html)
+        
+        # Take the first 4000 characters for a good glimpse
+        preview_snippet = cleaned_content[:4000]
+        
+        # Construct the final HTML snippet with truncation note
+        if len(cleaned_content) > 4000:
+            preview_html = f"<div class='preview-snippet'>{preview_snippet}... <p class='preview-note'>**Content truncated for preview. Add to your shelf to read the full text.**</p></div>"
+        else:
+            preview_html = f"<div class='preview-snippet'>{cleaned_content}</div>"
+
+        return jsonify({'success': True, 'content': preview_html})
+        
+    except requests.exceptions.RequestException:
+        return jsonify({'error': 'Could not load book content for preview. The link may be broken or the server timed out.'}), 500
+
+
+@app.route('/view_book/<int:book_id>')
+def view_book(book_id):
+    """Fetches the book content from the stored Gutenberg URL and renders it."""
     user_id = session.get('user_id')
     if not user_id:
         return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    book = conn.execute(
+        'SELECT id, title, author, gutenberg_url FROM books WHERE id = ? AND user_id = ?',
+        (book_id, user_id)
+    ).fetchone()
+    conn.close()
+
+    if not book:
+        flash('Book not found or does not belong to you.', 'danger')
+        return redirect(url_for('my_books'))
     
-    with get_db_connection() as conn:
-        # Ensure the user owns the book before deleting
-        book = conn.execute('SELECT * FROM books WHERE id = ? AND user_id = ?', (book_id, user_id)).fetchone()
-        if book:
-            conn.execute('DELETE FROM books WHERE id = ?', (book_id,))
-            conn.commit()
-            flash('Book deleted successfully!', 'success')
-        else:
-            flash('Book not found or you do not have permission to delete it.', 'danger')
-    return redirect(url_for('my_books'))
+    if not book['gutenberg_url']:
+        flash(f"'{book['title']}' does not have a linked Gutenberg HTML page for viewing. Only books added via the 'Search Free Ebooks' feature are viewable.", 'danger')
+        return redirect(url_for('my_books'))
+
+    try:
+        # Fetch the content with a short timeout
+        response = requests.get(book['gutenberg_url'], timeout=15)
+        response.raise_for_status()
+        
+        raw_html = response.text
+        
+        # Clean the HTML content to remove boilerplate
+        cleaned_content = clean_gutenberg_html(raw_html)
+        
+        return render_template('read_public.html', book=book, content=cleaned_content)
+        
+    except requests.exceptions.RequestException as e:
+        flash(f"Could not load book content from Gutenberg: {e}. The link may be broken or the server timed out.", 'danger')
+        return redirect(url_for('my_books'))
+
 
 @app.route('/update_book/<int:book_id>', methods=['POST'])
 def update_book(book_id):
@@ -244,77 +418,93 @@ def update_book(book_id):
     if not user_id:
         return redirect(url_for('login'))
 
-    with get_db_connection() as conn:
-        book = conn.execute('SELECT * FROM books WHERE id = ? AND user_id = ?', (book_id, user_id)).fetchone()
-        if not book:
-            flash('Book not found or you do not have permission to edit it.', 'danger')
-            return redirect(url_for('my_books'))
-
+    title = request.form['title']
+    author = request.form.get('author', 'Unknown Author')
+    genre = request.form.get('genre', '')
     status = request.form['status']
-    current_page = request.form.get('current_page')
-
-    if status == 'Reading' and (current_page is None or not current_page.isdigit() or int(current_page) < 0):
-        flash('Current page must be a non-negative number for "Reading" status.', 'danger')
+    current_page = request.form.get('current_page', 0)
+    
+    if not title:
+        flash('Book title cannot be empty.', 'danger')
         return redirect(url_for('my_books'))
     
-    if status != 'Reading':
-        current_page_val = 0
-    else:
-        current_page_val = int(current_page)
-
-    with get_db_connection() as conn:
-        conn.execute('UPDATE books SET status = ?, current_page = ? WHERE id = ?',
-                     (status, current_page_val, book_id))
-        conn.commit()
+    try:
+        current_page = int(current_page)
+    except ValueError:
+        flash('Current page must be a number.', 'danger')
+        return redirect(url_for('my_books'))
     
-    flash('Book updated successfully!', 'success')
-    return redirect(url_for('my_books'))
+    conn = get_db_connection()
+    existing_book = conn.execute('SELECT * FROM books WHERE id = ? AND user_id = ?', (book_id, user_id)).fetchone()
+    
+    if not existing_book:
+        conn.close()
+        flash('Book not found or unauthorized.', 'danger')
+        return redirect(url_for('my_books'))
+    
+    try:
+        conn.execute('''
+            UPDATE books
+            SET title = ?, author = ?, genre = ?, status = ?, current_page = ?
+            WHERE id = ? AND user_id = ?
+        ''', (title, author, genre, status, current_page, book_id, user_id))
+        conn.commit()
+        flash(f'"{title}" updated successfully!', 'success')
+    except Exception as e:
+        flash(f'An error occurred during update: {e}', 'danger')
+    finally:
+        conn.close()
 
-@app.route('/analysis')
-def analysis():
+    return redirect(url_for('my_books', filter=status))
+
+@app.route('/delete_book/<int:book_id>', methods=['POST'])
+def delete_book(book_id):
     user_id = session.get('user_id')
     if not user_id:
-        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({'error': 'Unauthorized'}), 401
         return redirect(url_for('login'))
 
     conn = get_db_connection()
+    
+    book = conn.execute('SELECT title FROM books WHERE id = ? AND user_id = ?', (book_id, user_id)).fetchone()
+    
+    if book:
+        conn.execute('DELETE FROM books WHERE id = ? AND user_id = ?', (book_id, user_id))
+        conn.commit()
+        flash(f'"{book["title"]}" removed successfully.', 'success')
+    else:
+        flash('Book not found or unauthorized.', 'danger')
+        
+    conn.close()
+    return redirect(url_for('my_books'))
 
-    # Genre distribution
-    genres = conn.execute(
-        'SELECT genre, COUNT(*) as count FROM books WHERE user_id = ? GROUP BY genre',
-        (user_id,)
-    ).fetchall()
-
-    # Status counts
-    status_counts = conn.execute(
-        'SELECT status, COUNT(*) as count FROM books WHERE user_id = ? GROUP BY status',
-        (user_id,)
-    ).fetchall()
-
+@app.route('/api/analysis')
+def api_analysis():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    status_data = conn.execute('SELECT status, COUNT(id) as count FROM books WHERE user_id = ? GROUP BY status', (user_id,)).fetchall()
+    genre_data_raw = conn.execute('SELECT genre, COUNT(id) as count FROM books WHERE user_id = ? AND genre IS NOT NULL AND genre != "" GROUP BY genre', (user_id,)).fetchall()
     conn.close()
 
-    # Prepare genre data (sort descending by count)
-    sorted_genres_list = sorted(
-        [{'genre': g['genre'], 'count': g['count']} for g in genres],
-        key=lambda x: x['count'],
-        reverse=True
-    )
+    total_books = sum(s['count'] for s in status_data)
+    status_dict = {s['status']: s['count'] for s in status_data}
+    
+    genre_counts = {}
+    for row in genre_data_raw:
+        genres = [g.strip() for g in row['genre'].split(',') if g.strip()]
+        for genre in genres:
+            genre_counts[genre] = genre_counts.get(genre, 0) + row['count']
 
     genre_data = {
-        'labels': [g['genre'] for g in sorted_genres_list],
-        'counts': [g['count'] for g in sorted_genres_list]
+        "labels": list(genre_counts.keys()),
+        "counts": list(genre_counts.values())
     }
 
-    # Status dictionary
-    status_dict = {row['status']: row['count'] for row in status_counts}
-    total_books = sum(status_dict.values())
-
-    # If AJAX → send only genre data (for chart.js)
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify(genre_data)
 
-    # Normal request → render stats + chart page
     return render_template(
         'analysis.html',
         total_books=total_books,
@@ -323,6 +513,10 @@ def analysis():
         read=status_dict.get("Read", 0),
         genre_data=genre_data
     )
+
+@app.route('/analysis')
+def analysis():
+    return api_analysis()
 
 @app.route('/my_books')
 @app.route('/my_books/<filter>')
@@ -342,13 +536,6 @@ def my_books(filter='all'):
     conn.close()
 
     return render_template('my_books.html', books=books, current_filter=filter)
-
-@app.route('/logout')
-def logout():
-    session.pop('user_id', None)
-    session.pop('username', None)
-    flash('You have been logged out.', 'info')
-    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(debug=True)

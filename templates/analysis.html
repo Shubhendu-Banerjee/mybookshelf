@@ -61,7 +61,7 @@
     document.addEventListener('DOMContentLoaded', () => {
       // FIX: Wait for Chart.js to load (since it's deferred)
       if (typeof Chart === 'undefined') {
-        console.warn('Chart.js not loaded. Retrying...');
+        // Simple polling/retry mechanism for deferred script loading
         return setTimeout(() => document.dispatchEvent(new Event('DOMContentLoaded')), 100);
       }
 
@@ -76,8 +76,12 @@
         const dataEl = document.getElementById('genre-data');
         if (dataEl) {
           try {
+            // FIX: This now correctly expects 'counts' (because app.py was fixed)
             const parsed = JSON.parse(dataEl.textContent || 'null');
-            if (parsed && parsed.labels && parsed.counts) return parsed;
+            // Check for required keys
+            if (parsed && parsed.labels && parsed.counts) {
+              return { labels: parsed.labels, counts: parsed.counts };
+            }
           } catch (e) {
             console.error('Could not parse embedded genre_data JSON:', e);
           }
@@ -149,7 +153,9 @@
         const chartContainer = document.querySelector('.chart-container');
         if (!chartContainer) return;
 
-        canvas.remove();
+        // Remove canvas to display placeholder
+        const existingCanvas = document.getElementById('genrePieChart');
+        if (existingCanvas) existingCanvas.remove(); 
 
         const placeholder = document.createElement('div');
         placeholder.className = 'no-data-placeholder'; 
@@ -162,6 +168,7 @@
       };
 
       const setupThemeObserver = () => {
+        // Observe changes to the dark-mode class on the <html> element
         new MutationObserver(() => {
           if (!genreChartInstance) return;
           const nc = getChartThemeColors();

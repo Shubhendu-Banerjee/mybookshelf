@@ -80,6 +80,7 @@
         </form>
 
         <div class="button-group" style="justify-content: center;"> {# Center the buttons #}
+          <a href="{{ url_for('search_public_books') }}" class="filter-button" style="background-color: var(--accent); color: white;">🔍 Search Free Ebooks</a>
           <a href="{{ url_for('analysis') }}" class="filter-button">Analysis</a>
           <a href="/my_books" class="filter-button">My Books</a> {# Use a button-like style #}
           <a href="/logout" class="filter-button">Logout</a> {# Consistent styling #}
