@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Analysis</title>
+
+  <script>
+    if (localStorage.getItem('darkMode') === 'true') {
+      document.documentElement.classList.add('dark-mode');
+    }
+  </script>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='clock.css') }}">
+
+  <script src="{{ url_for('static', filename='clock.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='theme-toggle.js') }}" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+</head>
+<body>
+  <div class="main-layout-container">
+    <div class="analog-clock">
+      <div class="hand hour-hand"></div>
+      <div class="hand minute-hand"></div>
+      <div class="hand second-hand"></div>
+      <div class="center-dot"></div>
+    </div>
+
+    <div class="main-content-area">
+      <div class="toggle-container">
+        <button id="darkModeToggle">🌓 Toggle Dark Mode</button>
+      </div>
+      
+      <h2>Your Reading Analysis</h2>
+      
+      <div class="analysis-layout">
+        
+        <div class="stats-box">
+          <h4>Status Summary</h4>
+          <p><strong>Total Books:</strong> {{ total_books }}</p>
+          <p><strong>To Read:</strong> {{ to_read }}</p>
+          <p><strong>Reading:</strong> {{ reading }}</p>
+          <p><strong>Read:</strong> {{ read }}</p>
+          <hr>
+          <a href="{{ url_for('my_books') }}" class="filter-button">View My Books</a>
+        </div>
+        
+        <div class="chart-container">
+          <canvas id="genrePieChart" width="400" height="400"></canvas>
+          
+          <script id="genre-data" type="application/json">
+            {{ genre_data | tojson | safe }}
+          </script>
+        </div>
+        
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // FIX: Wait for Chart.js to load (since it's deferred)
+      if (typeof Chart === 'undefined') {
+        console.warn('Chart.js not loaded. Retrying...');
+        return setTimeout(() => document.dispatchEvent(new Event('DOMContentLoaded')), 100);
+      }
+
+      const canvas = document.getElementById('genrePieChart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      let genreChartInstance = null; 
+
+      function getGenreData() {
+        const dataEl = document.getElementById('genre-data');
+        if (dataEl) {
+          try {
+            const parsed = JSON.parse(dataEl.textContent || 'null');
+            if (parsed && parsed.labels && parsed.counts) return parsed;
+          } catch (e) {
+            console.error('Could not parse embedded genre_data JSON:', e);
+          }
+        }
+        return { labels: [], counts: [] };
+      }
+
+      const generateHslColors = (count) => {
+        const colors = [];
+        if (count <= 0) return colors;
+        const saturation = 70;
+        const lightness = 60;
+        for (let i = 0; i < count; i++) {
+          const hue = Math.round((i * 360) / count) % 360;
+          colors.push(`hsl(${hue}, ${saturation}%, ${lightness}%)`);
+        }
+        return colors;
+      };
+
+      const getChartThemeColors = () => {
+        const isDark = document.documentElement.classList.contains('dark-mode');
+        return {
+          borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)', 
+          fontColor: isDark ? '#e0e0e0' : '#2c3e50' 
+        };
+      };
+
+      const renderChart = (data) => {
+        const { labels, counts } = data;
+        const backgroundColors = generateHslColors(labels.length);
+        const themeColors = getChartThemeColors();
+
+        const chartConfig = {
+          type: 'pie',
+          data: {
+            labels: labels,
+            datasets: [{
+              data: counts,
+              backgroundColor: backgroundColors,
+              borderColor: themeColors.borderColor,
+              borderWidth: 2
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'top',
+                labels: { color: themeColors.fontColor }
+              },
+              title: {
+                display: true,
+                text: 'Genre Distribution',
+                color: themeColors.fontColor,
+                font: { size: 18 }
+              }
+            }
+          }
+        };
+
+        if (genreChartInstance) {
+          genreChartInstance.destroy(); 
+        }
+        genreChartInstance = new Chart(ctx, chartConfig);
+      };
+
+      const showNoDataPlaceholder = () => {
+        const chartContainer = document.querySelector('.chart-container');
+        if (!chartContainer) return;
+
+        canvas.remove();
+
+        const placeholder = document.createElement('div');
+        placeholder.className = 'no-data-placeholder'; 
+        placeholder.innerHTML = `
+          <p>📊 No genre data to show yet.</p>
+          <p>Add some books with genres and come back!</p>
+          <a href="/dashboard" class="filter-button">➕ Add Book</a>
+        `;
+        chartContainer.appendChild(placeholder);
+      };
+
+      const setupThemeObserver = () => {
+        new MutationObserver(() => {
+          if (!genreChartInstance) return;
+          const nc = getChartThemeColors();
+          
+          genreChartInstance.options.plugins.legend.labels.color = nc.fontColor;
+          genreChartInstance.options.plugins.title.color = nc.fontColor;
+          genreChartInstance.data.datasets[0].borderColor = nc.borderColor;
+
+          genreChartInstance.update();
+        }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+      };
+
+
+      const rawData = getGenreData();
+      
+      if (rawData.labels.length === 0) {
+        showNoDataPlaceholder();
+        return;
+      }
+
+      renderChart(rawData);
+      setupThemeObserver();
+    });
+  </script>
+</body>
+</html>

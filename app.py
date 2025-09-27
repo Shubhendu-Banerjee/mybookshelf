@@ -1,6 +1,6 @@
 # app.py (Modifications for my_books route)
 
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 import sqlite3
 import os
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -188,11 +188,7 @@ def dashboard():
     if not user_id:
         return redirect(url_for('login'))
     
-    # Removed books fetching from dashboard
-    # with get_db_connection() as conn:
-    #     books = conn.execute('SELECT * FROM books WHERE user_id = ? ORDER BY title', (user_id,)).fetchall()
-    
-    return render_template('dashboard.html') # Removed books=books from render_template
+    return render_template('dashboard.html')
 
 @app.route('/add', methods=['POST'])
 def add_book():
@@ -240,11 +236,97 @@ def delete_book(book_id):
             flash('Book deleted successfully!', 'success')
         else:
             flash('Book not found or you do not have permission to delete it.', 'danger')
-    return redirect(url_for('my_books')) # Redirect to my_books page after deletion
+    return redirect(url_for('my_books'))
+
+@app.route('/update_book/<int:book_id>', methods=['POST'])
+def update_book(book_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('login'))
+
+    with get_db_connection() as conn:
+        book = conn.execute('SELECT * FROM books WHERE id = ? AND user_id = ?', (book_id, user_id)).fetchone()
+        if not book:
+            flash('Book not found or you do not have permission to edit it.', 'danger')
+            return redirect(url_for('my_books'))
+
+    status = request.form['status']
+    current_page = request.form.get('current_page')
+
+    if status == 'Reading' and (current_page is None or not current_page.isdigit() or int(current_page) < 0):
+        flash('Current page must be a non-negative number for "Reading" status.', 'danger')
+        return redirect(url_for('my_books'))
+    
+    if status != 'Reading':
+        current_page_val = 0
+    else:
+        current_page_val = int(current_page)
+
+    with get_db_connection() as conn:
+        conn.execute('UPDATE books SET status = ?, current_page = ? WHERE id = ?',
+                     (status, current_page_val, book_id))
+        conn.commit()
+    
+    flash('Book updated successfully!', 'success')
+    return redirect(url_for('my_books'))
+
+@app.route('/analysis')
+def analysis():
+    user_id = session.get('user_id')
+    if not user_id:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({'error': 'Unauthorized'}), 401
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+
+    # Genre distribution
+    genres = conn.execute(
+        'SELECT genre, COUNT(*) as count FROM books WHERE user_id = ? GROUP BY genre',
+        (user_id,)
+    ).fetchall()
+
+    # Status counts
+    status_counts = conn.execute(
+        'SELECT status, COUNT(*) as count FROM books WHERE user_id = ? GROUP BY status',
+        (user_id,)
+    ).fetchall()
+
+    conn.close()
+
+    # Prepare genre data (sort descending by count)
+    sorted_genres_list = sorted(
+        [{'genre': g['genre'], 'count': g['count']} for g in genres],
+        key=lambda x: x['count'],
+        reverse=True
+    )
+
+    genre_data = {
+        'labels': [g['genre'] for g in sorted_genres_list],
+        'counts': [g['count'] for g in sorted_genres_list]
+    }
+
+    # Status dictionary
+    status_dict = {row['status']: row['count'] for row in status_counts}
+    total_books = sum(status_dict.values())
+
+    # If AJAX → send only genre data (for chart.js)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify(genre_data)
+
+    # Normal request → render stats + chart page
+    return render_template(
+        'analysis.html',
+        total_books=total_books,
+        to_read=status_dict.get("To Read", 0),
+        reading=status_dict.get("Reading", 0),
+        read=status_dict.get("Read", 0),
+        genre_data=genre_data
+    )
 
 @app.route('/my_books')
-@app.route('/my_books/<filter>') # Added filter parameter
-def my_books(filter='all'): # Default filter is 'all'
+@app.route('/my_books/<filter>')
+def my_books(filter='all'):
     user_id = session.get('user_id')
     if not user_id:
         return redirect(url_for('login'))
@@ -252,14 +334,14 @@ def my_books(filter='all'): # Default filter is 'all'
     conn = get_db_connection()
     if filter == 'all':
         books = conn.execute('SELECT * FROM books WHERE user_id = ? ORDER BY title', (user_id,)).fetchall()
-    elif filter in ['To Read', 'Reading', 'Read']: # Ensure these match your select options
+    elif filter in ['To Read', 'Reading', 'Read']:
         books = conn.execute('SELECT * FROM books WHERE user_id = ? AND status = ? ORDER BY title', (user_id, filter)).fetchall()
-    else: # Fallback for invalid filter
+    else:
         flash('Invalid filter option. Showing all books.', 'info')
         books = conn.execute('SELECT * FROM books WHERE user_id = ? ORDER BY title', (user_id,)).fetchall()
     conn.close()
 
-    return render_template('my_books.html', books=books, current_filter=filter) # Pass current_filter to template
+    return render_template('my_books.html', books=books, current_filter=filter)
 
 @app.route('/logout')
 def logout():

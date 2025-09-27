@@ -309,6 +309,39 @@ li a:hover {
   color: var(--accent-hover);
 }
 
+.book-display {
+  display: flex;
+  align-items: center;
+  flex: 1; /* book info takes all available space */
+}
+
+.book-info {
+  flex-grow: 1;
+}
+
+.book-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.book-actions button,
+.book-actions a {
+  background-color: var(--accent);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.book-actions button:hover,
+.book-actions a:hover {
+  background-color: var(--accent-hover);
+}
+
 .flash-messages {
   list-style: none;
   padding: 0;
@@ -497,7 +530,7 @@ html.dark-mode .suggestion-item:hover { /* Changed from body.dark-mode */
   display: flex;
   gap: 16px;
   margin-top: 20px;
-  justify-content: center; /* THIS IS THE LINE YOU NEEDED TO ADD */
+  justify-content: center;
 }
 
 .button-group a {
@@ -537,6 +570,59 @@ html.dark-mode .suggestion-item:hover { /* Changed from body.dark-mode */
 
 html.dark-mode .filter-button.active-filter { /* Changed from body.dark-mode */
   border: 1px solid var(--text-dark);
+}
+
+.no-data-placeholder {
+  text-align: center;
+  padding: 40px;
+  font-size: 1.1rem;
+  color: var(--text-light);
+  background: var(--card-bg-light);
+  border: 2px dashed var(--accent);
+  border-radius: 12px;
+}
+
+html.dark-mode .no-data-placeholder {
+  color: var(--text-dark);
+  background: var(--card-bg-dark);
+  border-color: var(--accent-hover);
+}
+
+.no-data-placeholder p {
+  margin: 10px 0;
+}
+
+.no-data-placeholder .filter-button {
+  margin-top: 15px;
+  display: inline-block;
+}
+
+.analysis-layout {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 40px;
+  flex-wrap: wrap; /* responsive */
+  margin-top: 20px;
+}
+
+.chart-container {
+  flex: 2;
+  min-width: 300px;
+  max-width: 500px;
+}
+
+.stats-box {
+  flex: 0 0 220px;  /* Fixed width for stats */
+  background: var(--card-bg-light);
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+html.dark-mode .stats-box {
+  background: var(--card-bg-dark);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 
 /* Ensure autocomplete input is positioned correctly */
