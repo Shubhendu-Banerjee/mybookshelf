@@ -55,11 +55,6 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users (id)
             );
         ''')
-        # Add the new column without crashing if the table already exists (safeguard)
-        try:
-            conn.execute("ALTER TABLE books ADD COLUMN gutenberg_url TEXT;")
-        except sqlite3.OperationalError:
-            pass
             
         conn.execute('''
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -102,6 +97,23 @@ def login():
         else:
             flash('Invalid username or password', 'danger')
     return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    """Logs out the user by clearing the session."""
+    # Check if the user is actually logged in
+    if 'user_id' in session:
+        # Clear specific session variables
+        session.pop('user_id', None)
+        session.pop('username', None)
+        
+        # Optional: Clear the entire session if preferred, though usually discouraged
+        # session.clear() 
+        
+        flash('You have been logged out successfully.', 'success')
+    
+    # Redirect to the login page regardless of whether they were logged in
+    return redirect(url_for('login'))
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
