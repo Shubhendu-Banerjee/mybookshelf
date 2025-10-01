@@ -74,7 +74,21 @@
               <span class="book-author">by {{ book.author }}</span>
               <span class="book-genre-rec">Genre: {{ book.genre }}</span>
             </div>
-            <a href="https://books.google.com/books?id={{ book.google_books_id }}" target="_blank" class="recommend-link filter-button secondary-button">View Details →</a>
+            <div class="recommend-actions">
+                <a href="https://books.google.com/books?id={{ book.google_books_id }}" target="_blank" class="filter-button secondary-button">View Details →</a>
+                
+                <button 
+                    class="filter-button" 
+                    onclick="handleRecommendationAction('{{ book.google_books_id }}', '{{ book.title | e }}', 'add', this)">
+                    Add to Shelf
+                </button>
+                
+                <button 
+                    class="filter-button danger-button" 
+                    onclick="handleRecommendationAction('{{ book.google_books_id }}', '{{ book.title | e }}', 'dismiss', this)">
+                    Not Interested
+                </button>
+            </div>
           </div>
           {% endfor %}
         </div>
@@ -224,6 +238,62 @@
       renderChart(rawData);
       setupThemeObserver();
     });
+  </script>
+
+  <script>
+    function handleRecommendationAction(googleBooksId, title, action, buttonElement) {
+        // Disable the button to prevent multiple clicks
+        buttonElement.disabled = true;
+        const originalText = buttonElement.textContent;
+        buttonElement.textContent = action === 'add' ? 'Adding...' : 'Dismissing...';
+
+        fetch('/recommendation-action', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                google_books_id: googleBooksId,
+                title: title,
+                action: action
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                let card = buttonElement.closest('.recommend-card');
+                if (card) {
+                    // Remove the card if the book was successfully added or dismissed
+                    if (action === 'dismiss' || (action === 'add' && data.message.includes('added'))) {
+                        card.classList.add('faded-out'); 
+
+                        // Temporarily change button text for success
+                        buttonElement.textContent = action === 'add' ? 'Added!' : 'Dismissed!';
+
+                        // Remove the card from the DOM after a short delay (for animation)
+                        setTimeout(() => {
+                            card.remove();
+                        }, 500); 
+                    } else {
+                        // If book was already on shelf, re-enable button and display message
+                        buttonElement.disabled = false;
+                        buttonElement.textContent = originalText;
+                    }
+                }
+                alert(data.message); 
+            } else {
+                alert(`Error: ${data.message}`);
+                buttonElement.disabled = false; // Re-enable on failure
+                buttonElement.textContent = originalText;
+            }
+        })
+        .catch(error => {
+            console.error('Action failed:', error);
+            alert('An unexpected error occurred.');
+            buttonElement.disabled = false; // Re-enable on failure
+            buttonElement.textContent = originalText;
+        });
+    }
   </script>
 </body>
 </html>

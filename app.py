@@ -68,6 +68,16 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users (id)
             );
         ''')
+
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS dismissed_recommendations (
+                user_id INTEGER NOT NULL,
+                google_books_id TEXT NOT NULL,
+                dismissed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                PRIMARY KEY (user_id, google_books_id)
+            );
+        ''')
         conn.commit()
 
 # Initialize the database when the app starts
@@ -594,7 +604,16 @@ def api_analysis():
 
     conn = get_db_connection()
 
-    # --- 1. Get Status Counts (Existing Logic) ---
+    # -- 1. Fetch dismissed books (google_books_id) for the user --
+    dismissed_books_rows = conn.execute(
+        'SELECT google_books_id FROM dismissed_recommendations WHERE user_id = ?', 
+        (user_id,)
+    ).fetchall()
+    
+    # Convert to a set for efficient lookup
+    dismissed_ids = {row['google_books_id'] for row in dismissed_books_rows}
+
+    # --- 2. Get Status Counts (Existing Logic) ---
     status_rows = conn.execute('''
         SELECT status, COUNT(id) as count FROM books WHERE user_id = ? GROUP BY status
     ''', (user_id,)).fetchall()
@@ -605,7 +624,7 @@ def api_analysis():
         status_dict[row['status']] = row['count']
         total_books += row['count']
 
-    # --- 2. Get Genre Counts (Existing Logic, slightly enhanced for multi-genre) ---
+    # --- 3. Get Genre Counts (Existing Logic, slightly enhanced for multi-genre) ---
     genre_rows = conn.execute('''
         SELECT 
             genre, 
@@ -638,7 +657,7 @@ def api_analysis():
     # Get top 3 genres
     top_three_genres = [genre[0] for genre in sorted_genres[:3]]
 
-    # --- 3. Get User's Existing Google Books IDs (For filtering recommendations) ---
+    # --- 4. Get User's Existing Google Books IDs (For filtering recommendations) ---
     existing_books = conn.execute(
         'SELECT title, google_books_id FROM books WHERE user_id = ?',
         (user_id,)
@@ -655,12 +674,17 @@ def api_analysis():
         if row['google_books_id']:
             user_book_ids.add(row['google_books_id'])
 
-    # --- 4. Get Recommendations ---
+    # --- 5. Get Recommendations ---
     recommendations = []
     # user_book_ids is passed and updated inside the function to track IDs already recommended
     for genre in top_three_genres:
         recs = get_google_recommendations(genre, user_normalized_titles, user_book_ids)
         recommendations.extend(recs)
+
+    filtered_recommendations = [
+        book for book in recommendations 
+        if book['google_books_id'] not in dismissed_ids
+    ]
     
     # Prepare final data
     genre_data = {
@@ -680,8 +704,76 @@ def api_analysis():
         reading=status_dict.get("Reading", 0),
         read=status_dict.get("Read", 0),
         genre_data=genre_data,
-        recommendations=recommendations # NEW: Pass recommendations list
+        recommendations=filtered_recommendations # NEW: Pass filtered recommendations list
     )
+
+@app.route('/recommendation-action', methods=['POST'])
+def recommendation_action():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'success': False, 'message': 'User not logged in.'}), 401
+
+    data = request.get_json()
+    google_books_id = data.get('google_books_id')
+    action = data.get('action')
+    title = data.get('title', 'Unknown Book')
+
+    if not google_books_id or not action:
+        return jsonify({'success': False, 'message': 'Missing data.'}), 400
+
+    conn = get_db_connection()
+    message = ""
+    success = False
+
+    try:
+        if action == 'add':
+            # Check if the book already exists, then insert if not.
+            existing_book = conn.execute(
+                'SELECT id FROM books WHERE user_id = ? AND google_books_id = ?', 
+                (user_id, google_books_id)
+            ).fetchone()
+
+            if existing_book:
+                message = f"'{title}' is already on your shelf."
+            else:
+                conn.execute(
+                    'INSERT INTO books (user_id, google_books_id, title, status) VALUES (?, ?, ?, ?)',
+                    (user_id, google_books_id, title, 'To Read')
+                )
+                # If a book is added, remove it from dismissed_recommendations
+                conn.execute(
+                    'DELETE FROM dismissed_recommendations WHERE user_id = ? AND google_books_id = ?',
+                    (user_id, google_books_id)
+                )
+                message = f"'{title}' added to your 'To Read' shelf!"
+            
+            success = True
+
+        elif action == 'dismiss':
+            # Record the dismissal persistently
+            conn.execute(
+                '''
+                INSERT OR IGNORE INTO dismissed_recommendations (user_id, google_books_id) 
+                VALUES (?, ?)
+                ''',
+                (user_id, google_books_id)
+            )
+            message = f"'{title}' dismissed. You won't see this recommendation again."
+            success = True
+
+        else:
+            message = 'Invalid action.'
+            success = False
+
+        conn.commit()
+    except sqlite3.Error as e:
+        conn.rollback()
+        message = f"Database error: {e}"
+        success = False
+    finally:
+        conn.close()
+
+    return jsonify({'success': success, 'message': message})
 
 @app.route('/analysis')
 def analysis():

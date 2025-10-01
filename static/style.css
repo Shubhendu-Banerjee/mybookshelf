@@ -1020,15 +1020,46 @@ html.dark-mode .book-author, html.dark-mode .book-genre-rec {
 }
 
 /* Specific style for the link button to fit the card */
-.recommend-link {
+.recommend-actions {
     width: 100%;
     margin-top: auto; /* Push to the bottom */
+    display: flex; /* Makes buttons stack vertically */
+    flex-direction: column;
+    gap: 5px; /* Add small space between buttons */
+    padding-top: 10px; /* Add some space above the buttons */
+}
+
+.recommend-actions .filter-button { 
+    width: 100%;
+    text-align: center;
+    box-sizing: border-box; /* Include padding and border in the element's total width and height */
 }
 
 .no-recommendations-placeholder {
     margin-top: 30px;
     padding: 30px;
     text-align: center;
+}
+
+/* Style for the "Not Interested" button (Danger/Dismissal color) */
+.danger-button {
+    background-color: #e74c3c; /* Red color */
+    border-color: #c0392b;
+    color: white;
+}
+
+.danger-button:hover {
+    background-color: #c0392b;
+}
+
+/* Transition for the recommendation card removal */
+.recommend-card {
+    transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+}
+.recommend-card.faded-out {
+    opacity: 0;
+    transform: translateY(20px);
+    pointer-events: none; /* Make sure it can't be clicked while fading */
 }
 
 /* Ensure autocomplete input is positioned correctly */
