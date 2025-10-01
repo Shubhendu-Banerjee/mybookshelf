@@ -536,7 +536,7 @@ def update_book(book_id):
 
     title = request.form['title']
     author = request.form.get('author', 'Unknown Author')
-    genre = request.form.get('genre', '')
+    genre = request.form.get('new_genre', '').strip() 
     status = request.form['status']
     current_page = request.form.get('current_page', 0)
     
