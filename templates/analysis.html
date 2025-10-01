@@ -54,6 +54,38 @@
         </div>
         
       </div>
+
+      {% if recommendations %}
+      <div class="recommendations-container card">
+        <h3>🌟 Top Recommendations for You</h3>
+        <p class="subtitle">Based on your favorite genres: 
+          {% set recommended_genres = recommendations | map(attribute='genre') | unique | list %}
+          {% for genre in recommended_genres %}
+            <span class="genre-tag">{{ genre }}</span>{% if not loop.last %}, {% endif %}
+          {% endfor %}
+        </p>
+        
+        <div class="recommendations-list">
+          {% for book in recommendations %}
+          <div class="recommendation-card">
+            <img src="{{ book.thumbnail }}" alt="Cover of {{ book.title }}" class="book-thumbnail">
+            <div class="book-info">
+              <span class="book-title">{{ book.title }}</span>
+              <span class="book-author">by {{ book.author }}</span>
+              <span class="book-genre-rec">Genre: {{ book.genre }}</span>
+            </div>
+            <a href="https://books.google.com/books?id={{ book.google_books_id }}" target="_blank" class="recommend-link filter-button secondary-button">View Details →</a>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% else %}
+        <div class="no-recommendations-placeholder card">
+          <p>We couldn't generate recommendations yet. Add a few books with genres to start!</p>
+          <a href="{{ url_for('dashboard') }}" class="filter-button">➕ Add Book</a>
+        </div>
+      {% endif %}
+
     </div>
   </div>
 

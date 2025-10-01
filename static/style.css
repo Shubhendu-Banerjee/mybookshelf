@@ -919,6 +919,118 @@ html.dark-mode .preview-note {
     border-top: 1px dashed #444;
 }
 
+.recommendations-container {
+    margin-top: 30px;
+    padding: 20px;
+    grid-column: 1 / -1; /* Make it span full width below stats/chart */
+    box-sizing: border-box;
+}
+
+.recommendations-container h3 {
+    margin-top: 0;
+    margin-bottom: 5px;
+}
+
+.recommendations-container .subtitle {
+    font-size: 0.9em;
+    font-style: italic;
+    color: var(--text-light);
+    margin-bottom: 20px;
+}
+
+html.dark-mode .recommendations-container .subtitle {
+    color: var(--text-dark);
+}
+
+.recommendations-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    justify-content: center;
+}
+
+.recommendation-card {
+    background-color: var(--input-bg-light); /* Lighter background than the container */
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+    flex: 0 1 calc(33.333% - 20px); /* 3 cards per row, accounting for gap */
+    min-width: 250px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+html.dark-mode .recommendation-card {
+    background-color: var(--card-bg-dark);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.recommendation-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+}
+
+.book-thumbnail {
+    width: 100px;
+    height: auto;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.book-info {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 10px;
+}
+
+.book-title {
+    font-weight: bold;
+    font-size: 1.1em;
+    color: var(--text-light);
+    margin-bottom: 2px;
+}
+
+html.dark-mode .book-title {
+    color: var(--text-dark);
+}
+
+.book-author, .book-genre-rec {
+    font-size: 0.9em;
+    color: #666;
+}
+
+html.dark-mode .book-author, html.dark-mode .book-genre-rec {
+    color: #bbb;
+}
+
+.genre-tag {
+    display: inline-block;
+    background-color: var(--accent);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: bold;
+    margin-right: 5px;
+    white-space: nowrap; /* Prevent wrapping */
+}
+
+/* Specific style for the link button to fit the card */
+.recommend-link {
+    width: 100%;
+    margin-top: auto; /* Push to the bottom */
+}
+
+.no-recommendations-placeholder {
+    margin-top: 30px;
+    padding: 30px;
+    text-align: center;
+}
+
 /* Ensure autocomplete input is positioned correctly */
 form label {
     position: relative; /* Make label a positioning context for suggestion box */

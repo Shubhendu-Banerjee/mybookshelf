@@ -1,5 +1,6 @@
 # app.py
 
+import string
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 import sqlite3
 import os
@@ -7,13 +8,16 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import secrets
 from datetime import datetime, timedelta
 from flask_mail import Mail, Message
-import requests # NEW IMPORT for Gutendex API
-import re # NEW IMPORT for HTML cleaning
+import requests # IMPORT for Gutendex API
+import re # IMPORT for HTML cleaning
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key' # IMPORTANT: Change this to a strong, random key in production
 
 DB_FILE = 'books.db'
+
+# Define a constant for the Google Books API Key (taken from autocomplete.js)
+GOOGLE_BOOKS_API_KEY = "AIzaSyDsiDhyDVcP75Lxwdgi5WBxYBPzcXkIKkk" 
 
 # --- Flask-Mail Configuration ---
 app.config['MAIL_SERVER'] = 'smtp.gmail.com' # e.g., 'smtp.gmail.com' for Gmail
@@ -69,6 +73,96 @@ def init_db():
 # Initialize the database when the app starts
 with app.app_context():
     init_db()
+
+def normalize_title(title):
+    """Cleans a book title for robust comparison, only making it case-insensitive."""
+    if not title:
+        return ""
+    # 1. Convert to lowercase
+    normalized = title.lower()
+    # 2. IMPORTANT: Keep punctuation. The old lines for removing punctuation and
+    #    extra whitespace are now removed/modified to preserve it.
+    
+    # We will still ensure there's no excessive whitespace, though.
+    # We keep only standard leading/trailing strip and collapsing internal spaces.
+    normalized = " ".join(normalized.split())
+    return normalized
+
+def get_google_recommendations(genre, user_normalized_titles, user_book_ids):
+    """
+    Queries Google Books API for a given genre, filters out books the user already owns 
+    based on the normalized title, and returns a list of up to 3 unique recommended books.
+    
+    The user_book_ids set is now used to ensure unique recommendations across different genre searches.
+    """
+    base_url = "https://www.googleapis.com/books/v1/volumes"
+    recommended_books = []
+    page = 0
+    
+    # Try up to 5 pages of search results to ensure we find 3 unique books
+    while len(recommended_books) < 3 and page < 5: 
+        params = {
+            'q': f'subject:"{genre}"',
+            'orderBy': 'relevance', 
+            'maxResults': 10,
+            'startIndex': page * 10,
+            'key': GOOGLE_BOOKS_API_KEY
+        }
+        
+        try:
+            response = requests.get(base_url, params=params)
+            response.raise_for_status() 
+            data = response.json()
+            
+            if 'items' not in data:
+                break 
+            
+            for item in data['items']:
+                volume_info = item.get('volumeInfo', {})
+                book_id = item.get('id')
+                book_title = volume_info.get('title')
+                
+                # Check for essential data
+                if not (book_id and book_title and volume_info.get('authors')):
+                    continue
+                
+                # --- FILTERING LOGIC: Check normalized title ---
+                normalized_rec_title = normalize_title(book_title)
+                
+                # 1. Check if the book's title is already in the user's library
+                if normalized_rec_title in user_normalized_titles:
+                    continue 
+                
+                # 2. Check if the book's specific Google Books ID was already recommended 
+                #    in a previous genre search to ensure the final list is unique by ID
+                if book_id in user_book_ids:
+                    continue
+                # ----------------------------------------------------
+                
+                # Construct a book object
+                book = {
+                    'title': book_title,
+                    'author': ', '.join(volume_info['authors']),
+                    'thumbnail': volume_info.get('imageLinks', {}).get('smallThumbnail', 'static/images/placeholder.png'),
+                    'google_books_id': book_id,
+                    'genre': genre
+                }
+                
+                recommended_books.append(book)
+                
+                # Add the Google Books ID to the set to prevent recommending it again
+                user_book_ids.add(book_id)
+                
+                if len(recommended_books) >= 3:
+                    return recommended_books 
+            
+            page += 1
+            
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching recommendations for genre '{genre}': {e}")
+            break
+
+    return recommended_books
 
 @app.before_request
 def require_login():
@@ -493,37 +587,100 @@ def delete_book(book_id):
 def api_analysis():
     user_id = session.get('user_id')
     if not user_id:
-        return jsonify({"error": "Unauthorized"}), 401
-    
-    conn = get_db_connection()
-    status_data = conn.execute('SELECT status, COUNT(id) as count FROM books WHERE user_id = ? GROUP BY status', (user_id,)).fetchall()
-    genre_data_raw = conn.execute('SELECT genre, COUNT(id) as count FROM books WHERE user_id = ? AND genre IS NOT NULL AND genre != "" GROUP BY genre', (user_id,)).fetchall()
-    conn.close()
+        # Prevent unauthorized access, especially to the analysis route
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({'error': 'Unauthorized'}), 401
+        return redirect(url_for('login'))
 
-    total_books = sum(s['count'] for s in status_data)
-    status_dict = {s['status']: s['count'] for s in status_data}
+    conn = get_db_connection()
+
+    # --- 1. Get Status Counts (Existing Logic) ---
+    status_rows = conn.execute('''
+        SELECT status, COUNT(id) as count FROM books WHERE user_id = ? GROUP BY status
+    ''', (user_id,)).fetchall()
+    
+    total_books = 0
+    status_dict = {}
+    for row in status_rows:
+        status_dict[row['status']] = row['count']
+        total_books += row['count']
+
+    # --- 2. Get Genre Counts (Existing Logic, slightly enhanced for multi-genre) ---
+    genre_rows = conn.execute('''
+        SELECT 
+            genre, 
+            COUNT(id) as count 
+        FROM books 
+        WHERE 
+            user_id = ? AND genre IS NOT NULL AND genre != '' 
+        GROUP BY genre
+        ORDER BY count DESC
+    ''', (user_id,)).fetchall()
     
     genre_counts = {}
-    for row in genre_data_raw:
-        genres = [g.strip() for g in row['genre'].split(',') if g.strip()]
-        for genre in genres:
-            genre_counts[genre] = genre_counts.get(genre, 0) + row['count']
+    for row in genre_rows:
+        genre_string = row['genre'].strip() 
+        if genre_string:
+            # Only split by commas (,) or semicolons (;) 
+            # This preserves multi-word genres like 'Personal Finance' as a single entry.
+            genres = re.split(r'[;,]', genre_string) 
+            
+            for g in genres:
+                g = g.strip() # Remove leading/trailing whitespace from the resulting genre
+                if g:
+                    # Standardize case for accurate counting (e.g., 'fiction' and 'Fiction' count as one)
+                    g_title = g.title() 
+                    genre_counts[g_title] = genre_counts.get(g_title, 0) + row['count']
+    
+    # Sort genres by count in descending order
+    sorted_genres = sorted(genre_counts.items(), key=lambda item: item[1], reverse=True)
+    
+    # Get top 3 genres
+    top_three_genres = [genre[0] for genre in sorted_genres[:3]]
 
+    # --- 3. Get User's Existing Google Books IDs (For filtering recommendations) ---
+    existing_books = conn.execute(
+        'SELECT title, google_books_id FROM books WHERE user_id = ?',
+        (user_id,)
+    ).fetchall()
+    
+    # Create a set of normalized titles for fast lookup
+    user_normalized_titles = set()
+    # Create a set of google_books_ids to prevent recommending the SAME book (by ID) 
+    # even if it was added under a slightly different title
+    user_book_ids = set() 
+    
+    for row in existing_books:
+        user_normalized_titles.add(normalize_title(row['title']))
+        if row['google_books_id']:
+            user_book_ids.add(row['google_books_id'])
+
+    # --- 4. Get Recommendations ---
+    recommendations = []
+    # user_book_ids is passed and updated inside the function to track IDs already recommended
+    for genre in top_three_genres:
+        recs = get_google_recommendations(genre, user_normalized_titles, user_book_ids)
+        recommendations.extend(recs)
+    
+    # Prepare final data
     genre_data = {
         "labels": list(genre_counts.keys()),
         "counts": list(genre_counts.values())
     }
-
+    
+    # Handle AJAX request separately (for Chart.js data)
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify(genre_data)
 
+    # Render template with all data
     return render_template(
         'analysis.html',
         total_books=total_books,
         to_read=status_dict.get("To Read", 0),
         reading=status_dict.get("Reading", 0),
         read=status_dict.get("Read", 0),
-        genre_data=genre_data
+        genre_data=genre_data,
+        recommendations=recommendations # NEW: Pass recommendations list
     )
 
 @app.route('/analysis')
