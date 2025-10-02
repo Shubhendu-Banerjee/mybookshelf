@@ -79,7 +79,15 @@
                 
                 <button 
                     class="filter-button" 
-                    onclick="handleRecommendationAction('{{ book.google_books_id }}', '{{ book.title | e }}', 'add', this)">
+                    onclick="handleRecommendationAction(
+                      '{{ book.google_books_id }}', 
+                      '{{ book.title | e }}', 
+                      '{{ book.author | e }}', 
+                      '{{ book.genre | e }}',
+                      '{{ book.thumbnail | e }}', 
+                      'add', 
+                      this
+                    )">
                     Add to Shelf
                 </button>
                 
@@ -241,22 +249,30 @@
   </script>
 
   <script>
-    function handleRecommendationAction(googleBooksId, title, action, buttonElement) {
+    function handleRecommendationAction(googleBooksId, title, author, genre, thumbnailUrl, action, buttonElement) {
         // Disable the button to prevent multiple clicks
         buttonElement.disabled = true;
         const originalText = buttonElement.textContent;
         buttonElement.textContent = action === 'add' ? 'Adding...' : 'Dismissing...';
 
+        const payload = {
+          google_books_id: googleBooksId,
+          title: title,
+          action: action
+        };
+
+        if (action === 'add') {
+          payload.author = author;
+          payload.genre = genre;
+          payload.thumbnail_url = thumbnailUrl;
+        }
+
         fetch('/recommendation-action', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                google_books_id: googleBooksId,
-                title: title,
-                action: action
-            })
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload) // Use the constructed payload
         })
         .then(response => response.json())
         .then(data => {

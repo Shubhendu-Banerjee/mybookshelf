@@ -727,6 +727,10 @@ def recommendation_action():
 
     try:
         if action == 'add':
+            author = data.get('author')
+            genre = data.get('genre')
+            thumbnail_url = data.get('thumbnail_url')
+
             # Check if the book already exists, then insert if not.
             existing_book = conn.execute(
                 'SELECT id FROM books WHERE user_id = ? AND google_books_id = ?', 
@@ -736,9 +740,12 @@ def recommendation_action():
             if existing_book:
                 message = f"'{title}' is already on your shelf."
             else:
+                # UPDATED: Include author and genre in the INSERT statement
                 conn.execute(
-                    'INSERT INTO books (user_id, google_books_id, title, status) VALUES (?, ?, ?, ?)',
-                    (user_id, google_books_id, title, 'To Read')
+                    '''INSERT INTO books 
+                        (user_id, google_books_id, title, author, genre, thumbnail_url, status) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                    (user_id, google_books_id, title, author, genre, thumbnail_url, 'To Read')
                 )
                 # If a book is added, remove it from dismissed_recommendations
                 conn.execute(
