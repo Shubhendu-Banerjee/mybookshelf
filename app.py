@@ -59,6 +59,13 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users (id)
             );
         ''')
+
+        # Handle migrations: add column if missing
+        cursor = conn.execute("PRAGMA table_info(books);")
+        existing_columns = [col[1] for col in cursor.fetchall()]
+        if 'gutenberg_url' not in existing_columns:
+            conn.execute("ALTER TABLE books ADD COLUMN gutenberg_url TEXT")
+            print("Column 'gutenberg_url' added successfully.")
             
         conn.execute('''
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -786,6 +793,38 @@ def recommendation_action():
 def analysis():
     return api_analysis()
 
+#@app.route('/my_books')
+#@app.route('/my_books/<filter>')
+@app.route('/endorse/<int:book_id>')
+def endorse_book(book_id):
+    """Generate shareable WhatsApp/Instagram links for endorsing a book."""
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    book = conn.execute(
+        'SELECT title, author FROM books WHERE id = ? AND user_id = ?',
+        (book_id, user_id)
+    ).fetchone()
+    conn.close()
+
+    if not book:
+        flash('Book not found!', 'danger')
+        return redirect(url_for('my_books'))
+
+    message = f"I recommend reading \"{book['title']}\" by {book['author']}! 📚"
+    whatsapp_url = f"https://api.whatsapp.com/send?text={message}"
+    instagram_url = f"https://www.instagram.com/create/story/?caption={message}"
+
+    return render_template(
+        "endorse.html",
+        book=book,
+        whatsapp_url=whatsapp_url,
+        instagram_url=instagram_url
+    )
+
+
 @app.route('/my_books')
 @app.route('/my_books/<filter>')
 def my_books(filter='all'):
@@ -795,15 +834,24 @@ def my_books(filter='all'):
 
     conn = get_db_connection()
     if filter == 'all':
-        books = conn.execute('SELECT * FROM books WHERE user_id = ? ORDER BY title', (user_id,)).fetchall()
+        books = conn.execute(
+            'SELECT * FROM books WHERE user_id = ? ORDER BY title',
+            (user_id,)
+        ).fetchall()
     elif filter in ['To Read', 'Reading', 'Read']:
-        books = conn.execute('SELECT * FROM books WHERE user_id = ? AND status = ? ORDER BY title', (user_id, filter)).fetchall()
+        books = conn.execute(
+            'SELECT * FROM books WHERE user_id = ? AND status = ? ORDER BY title',
+            (user_id, filter)
+        ).fetchall()
     else:
         flash('Invalid filter option. Showing all books.', 'info')
-        books = conn.execute('SELECT * FROM books WHERE user_id = ? ORDER BY title', (user_id,)).fetchall()
+        books = conn.execute(
+            'SELECT * FROM books WHERE user_id = ? ORDER BY title',
+            (user_id,)
+        ).fetchall()
     conn.close()
-
     return render_template('my_books.html', books=books, current_filter=filter)
+
 
 if __name__ == '__main__':
     app.run(debug=True)

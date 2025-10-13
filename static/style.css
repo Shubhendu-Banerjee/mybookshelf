@@ -167,6 +167,75 @@ html.dark-mode .auth-container { /* Changed from body.dark-mode */
   margin-bottom: 20px; /* Add some bottom margin */
 }
 
+/* Endorse Page Container */
+.endorse-container {
+  background: var(--card-bg-dark); /* Matches dark theme card */
+  color: var(--text-dark);
+  text-align: center;
+  padding: 30px;
+}
+
+html:not(.dark-mode) .endorse-container {
+  background: var(--card-bg-light);
+  color: var(--text-light);
+}
+
+
+.endorse-container h2 {
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+.endorse-author {
+  font-size: 1rem;
+  margin-bottom: 20px;
+  font-style: italic;
+  opacity: 0.85;
+}
+
+
+
+/* Buttons */
+.endorse-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.endorse-btn {
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: bold;
+  color: white;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.endorse-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+/* WhatsApp button */
+.whatsapp-btn {
+  background-color: #25D366;
+}
+.whatsapp-btn:hover {
+  background-color: #1ebe5d;
+}
+
+/* Instagram button */
+.instagram-btn {
+  background: linear-gradient(45deg, #f58529, #dd2a7b, #8134af, #515bd4);
+}
+.instagram-btn:hover {
+  opacity: 0.9;
+}
+
+
+
 html.dark-mode .dashboard-container { /* Changed from body.dark-mode */
   background: var(--card-bg-dark);
   box-shadow: 0 0 20px rgba(0,0,0,0.3);

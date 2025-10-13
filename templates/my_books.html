@@ -71,6 +71,11 @@
                 {% if book['gutenberg_url'] %}
                 <a href="{{ url_for('view_book', book_id=book.id) }}" class="read-btn filter-button" style="background-color: #007bff; margin-left: auto;">📚 Read Book</a>
                 {% endif %}
+
+                <!-- ✅ New Endorse Button -->
+                <a href="{{ url_for('endorse_book', book_id=book.id) }}" class="filter-button" style="background-color: #28a745; margin-left: 10px;">
+                  🌟 Endorse
+                </a>
                 
                 <button class="edit-btn filter-button">Edit</button>
                 
