@@ -10,14 +10,14 @@ from datetime import datetime, timedelta
 from flask_mail import Mail, Message
 import requests # IMPORT for Gutendex API
 import re # IMPORT for HTML cleaning
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key' # IMPORTANT: Change this to a strong, random key in production
 
 DB_FILE = 'books.db'
-
-# Define a constant for the Google Books API Key (taken from autocomplete.js)
-GOOGLE_BOOKS_API_KEY = "AIzaSyDsiDhyDVcP75Lxwdgi5WBxYBPzcXkIKkk" 
 
 # --- Flask-Mail Configuration ---
 app.config['MAIL_SERVER'] = 'smtp.gmail.com' # e.g., 'smtp.gmail.com' for Gmail
@@ -40,7 +40,10 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
-                email TEXT UNIQUE NOT NULL
+                email TEXT UNIQUE NOT NULL,
+                gender TEXT,
+                age INTEGER,
+                occupation TEXT
             );
         ''')
         # Original Schema with new 'gutenberg_url' added.
@@ -66,6 +69,16 @@ def init_db():
         if 'gutenberg_url' not in existing_columns:
             conn.execute("ALTER TABLE books ADD COLUMN gutenberg_url TEXT")
             print("Column 'gutenberg_url' added successfully.")
+
+        # --- ADD MIGRATION LOGIC FOR USERS TABLE ---
+        cursor = conn.execute("PRAGMA table_info(users);")
+        user_columns = [col[1] for col in cursor.fetchall()]
+        if 'gender' not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN gender TEXT")
+        if 'age' not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN age INTEGER")
+        if 'occupation' not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN occupation TEXT")
             
         conn.execute('''
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -73,16 +86,6 @@ def init_db():
                 user_id INTEGER NOT NULL,
                 expiry_time TEXT NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users (id)
-            );
-        ''')
-
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS dismissed_recommendations (
-                user_id INTEGER NOT NULL,
-                google_books_id TEXT NOT NULL,
-                dismissed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                PRIMARY KEY (user_id, google_books_id)
             );
         ''')
         conn.commit()
@@ -105,81 +108,120 @@ def normalize_title(title):
     normalized = " ".join(normalized.split())
     return normalized
 
-def get_google_recommendations(genre, user_normalized_titles, user_book_ids):
+def create_user_profile_vector(user_id, conn):
     """
-    Queries Google Books API for a given genre, filters out books the user already owns 
-    based on the normalized title, and returns a list of up to 3 unique recommended books.
-    
-    The user_book_ids set is now used to ensure unique recommendations across different genre searches.
+    Creates a feature vector representing a user's tastes, combining their
+    personal attributes and the genres of books on their shelf.
     """
-    base_url = "https://www.googleapis.com/books/v1/volumes"
-    recommended_books = []
-    page = 0
-    
-    # Try up to 5 pages of search results to ensure we find 3 unique books
-    while len(recommended_books) < 3 and page < 5: 
-        params = {
-            'q': f'subject:"{genre}"',
-            'orderBy': 'relevance', 
-            'maxResults': 10,
-            'startIndex': page * 10,
-            'key': GOOGLE_BOOKS_API_KEY
-        }
-        
-        try:
-            response = requests.get(base_url, params=params)
-            response.raise_for_status() 
-            data = response.json()
-            
-            if 'items' not in data:
-                break 
-            
-            for item in data['items']:
-                volume_info = item.get('volumeInfo', {})
-                book_id = item.get('id')
-                book_title = volume_info.get('title')
-                
-                # Check for essential data
-                if not (book_id and book_title and volume_info.get('authors')):
-                    continue
-                
-                # --- FILTERING LOGIC: Check normalized title ---
-                normalized_rec_title = normalize_title(book_title)
-                
-                # 1. Check if the book's title is already in the user's library
-                if normalized_rec_title in user_normalized_titles:
-                    continue 
-                
-                # 2. Check if the book's specific Google Books ID was already recommended 
-                #    in a previous genre search to ensure the final list is unique by ID
-                if book_id in user_book_ids:
-                    continue
-                # ----------------------------------------------------
-                
-                # Construct a book object
-                book = {
-                    'title': book_title,
-                    'author': ', '.join(volume_info['authors']),
-                    'thumbnail': volume_info.get('imageLinks', {}).get('smallThumbnail', 'static/images/placeholder.png'),
-                    'google_books_id': book_id,
-                    'genre': genre
-                }
-                
-                recommended_books.append(book)
-                
-                # Add the Google Books ID to the set to prevent recommending it again
-                user_book_ids.add(book_id)
-                
-                if len(recommended_books) >= 3:
-                    return recommended_books 
-            
-            page += 1
-            
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching recommendations for genre '{genre}': {e}")
-            break
+    user_df = pd.read_sql_query("SELECT * FROM users WHERE id = ?", conn, params=(user_id,))
+    if user_df.empty:
+        return None, None
 
-    return recommended_books
+    user_books_df = pd.read_sql_query("SELECT genre FROM books WHERE user_id = ?", conn, params=(user_id,))
+
+    # Create a text representation of user attributes
+    user_attributes = f"{user_df.iloc[0]['gender']} {user_df.iloc[0]['occupation']}"
+
+    # Combine all genres from the user's shelf into a single string
+    user_genres = " ".join(user_books_df['genre'].dropna().tolist())
+
+    # The user's profile is a combination of their attributes and liked genres
+    user_profile_text = f"{user_attributes} {user_genres}"
+
+    # Vectorize the profile
+    vectorizer = TfidfVectorizer()
+    user_profile_vector = vectorizer.fit_transform([user_profile_text])
+
+    return user_profile_vector, vectorizer
+
+def get_bcf_uai_gutendex_recommendations(user_id, num_recommendations=6):
+    """
+    Generates recommendations by creating a diverse candidate pool from the user's top 3 genres,
+    then lets the BCF-UAI scoring model select the absolute best 6 matches.
+    """
+    conn = get_db_connection()
+
+    # 1. Build the user's unique taste profile vector
+    user_profile_vector, vectorizer = create_user_profile_vector(user_id, conn)
+    if user_profile_vector is None:
+        conn.close()
+        return []
+
+    # 2. Get user's existing books to avoid recommending duplicates
+    user_books_df = pd.read_sql_query("SELECT title FROM books WHERE user_id = ?", conn, params=(user_id,))
+    existing_titles = set(user_books_df['title'].apply(normalize_title))
+
+    # 3. Find user's TOP 3 genres
+    top_genre_rows = conn.execute('''
+        SELECT genre FROM books 
+        WHERE user_id = ? AND genre IS NOT NULL AND genre != '' 
+        GROUP BY genre ORDER BY COUNT(id) DESC LIMIT 3
+    ''', (user_id,)).fetchall()
+    conn.close()
+
+    if not top_genre_rows:
+        return []
+
+    search_genres = [row['genre'].split(',')[0].strip() for row in top_genre_rows]
+
+    # 4. Fetch candidate books from all top genres to create a single, diverse pool
+    candidate_books = []
+    seen_book_ids = set() # Use a set to avoid duplicate book entries
+
+    for genre in search_genres:
+        try:
+            # Fetch up to 10 books per genre to build a good pool
+            params = {'topic': genre, 'mime_type': 'text/html', 'languages': 'en', 'sort': 'popular'}
+            response = requests.get('https://gutendex.com/books/', params=params, timeout=10)
+            response.raise_for_status()
+            gutendex_results = response.json().get('results', [])
+
+            for item in gutendex_results:
+                book_id = item.get('id')
+                # Filter out duplicates from our search and books the user already has
+                if book_id in seen_book_ids or normalize_title(item.get('title')) in existing_titles:
+                    continue
+                if not (item.get('formats', {}).get('text/html') or item.get('formats', {}).get('text/html; charset=utf-8')):
+                    continue
+                
+                item['searched_genre'] = genre
+                candidate_books.append(item)
+                seen_book_ids.add(book_id)
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching from Gutendex for genre '{genre}': {e}")
+            continue
+
+    if not candidate_books:
+        return []
+
+    # 5. Score the ENTIRE candidate pool against the user's profile
+    book_subjects = [" ".join(book.get('subjects', [])) for book in candidate_books]
+    book_vectors = vectorizer.transform(book_subjects)
+    
+    similarity_scores = cosine_similarity(user_profile_vector, book_vectors).flatten()
+
+    # 6. Rank and select the top 6 recommendations from the entire pool
+    for i, book in enumerate(candidate_books):
+        book['score'] = similarity_scores[i]
+
+    # Sort all candidates by their calculated score
+    sorted_candidates = sorted(candidate_books, key=lambda x: x['score'], reverse=True)
+    
+    recommendations = []
+    for book in sorted_candidates[:num_recommendations]:
+        authors = [author['name'] for author in book.get('authors', [])]
+        html_link = book['formats'].get('text/html; charset=utf-8') or book['formats'].get('text/html')
+
+        recommendations.append({
+            'title': book.get('title'),
+            'author': ', '.join(authors) or 'Unknown Author',
+            'genre': book['searched_genre'],
+            'gutenberg_url': html_link,
+            'thumbnail_url': book['formats'].get('image/jpeg', url_for('static', filename='images/placeholder.png'))
+        })
+
+    return recommendations
 
 @app.before_request
 def require_login():
@@ -232,12 +274,16 @@ def register():
         username = request.form['username']
         password = request.form['password']
         email = request.form['email']
+        age = request.form['age']
+        gender = request.form['gender']
+        occupation = request.form['occupation']
         hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
 
         with get_db_connection() as conn:
             try:
-                conn.execute('INSERT INTO users (username, password, email) VALUES (?, ?, ?)',
-                             (username, hashed_password, email))
+                conn.execute(
+                    'INSERT INTO users (username, password, email, age, gender, occupation) VALUES (?, ?, ?, ?, ?, ?)',
+                    (username, hashed_password, email, age, gender, occupation))
                 conn.commit()
                 flash('Registration successful! Please log in.', 'success')
                 return redirect(url_for('login'))
@@ -604,106 +650,50 @@ def delete_book(book_id):
 def api_analysis():
     user_id = session.get('user_id')
     if not user_id:
-        # Prevent unauthorized access, especially to the analysis route
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({'error': 'Unauthorized'}), 401
         return redirect(url_for('login'))
 
     conn = get_db_connection()
 
-    # -- 1. Fetch dismissed books (google_books_id) for the user --
-    dismissed_books_rows = conn.execute(
-        'SELECT google_books_id FROM dismissed_recommendations WHERE user_id = ?', 
-        (user_id,)
-    ).fetchall()
-    
-    # Convert to a set for efficient lookup
-    dismissed_ids = {row['google_books_id'] for row in dismissed_books_rows}
-
-    # --- 2. Get Status Counts (Existing Logic) ---
+    # --- Part 1: Get User Stats (This part is correct and remains) ---
     status_rows = conn.execute('''
         SELECT status, COUNT(id) as count FROM books WHERE user_id = ? GROUP BY status
     ''', (user_id,)).fetchall()
-    
     total_books = 0
     status_dict = {}
     for row in status_rows:
         status_dict[row['status']] = row['count']
         total_books += row['count']
 
-    # --- 3. Get Genre Counts (Existing Logic, slightly enhanced for multi-genre) ---
     genre_rows = conn.execute('''
-        SELECT 
-            genre, 
-            COUNT(id) as count 
-        FROM books 
-        WHERE 
-            user_id = ? AND genre IS NOT NULL AND genre != '' 
-        GROUP BY genre
-        ORDER BY count DESC
+        SELECT genre, COUNT(id) as count FROM books 
+        WHERE user_id = ? AND genre IS NOT NULL AND genre != '' 
+        GROUP BY genre ORDER BY count DESC
     ''', (user_id,)).fetchall()
+    conn.close()
     
     genre_counts = {}
     for row in genre_rows:
-        genre_string = row['genre'].strip() 
-        if genre_string:
-            # Only split by commas (,) or semicolons (;) 
-            # This preserves multi-word genres like 'Personal Finance' as a single entry.
-            genres = re.split(r'[;,]', genre_string) 
+        genres = [g.strip().title() for g in re.split(r'[;,]', row['genre']) if g.strip()]
+        for g in genres:
+            genre_counts[g] = genre_counts.get(g, 0) + row['count']
             
-            for g in genres:
-                g = g.strip() # Remove leading/trailing whitespace from the resulting genre
-                if g:
-                    # Standardize case for accurate counting (e.g., 'fiction' and 'Fiction' count as one)
-                    g_title = g.title() 
-                    genre_counts[g_title] = genre_counts.get(g_title, 0) + row['count']
-    
-    # Sort genres by count in descending order
-    sorted_genres = sorted(genre_counts.items(), key=lambda item: item[1], reverse=True)
-    
-    # Get top 3 genres
-    top_three_genres = [genre[0] for genre in sorted_genres[:3]]
-
-    # --- 4. Get User's Existing Google Books IDs (For filtering recommendations) ---
-    existing_books = conn.execute(
-        'SELECT title, google_books_id FROM books WHERE user_id = ?',
-        (user_id,)
-    ).fetchall()
-    
-    # Create a set of normalized titles for fast lookup
-    user_normalized_titles = set()
-    # Create a set of google_books_ids to prevent recommending the SAME book (by ID) 
-    # even if it was added under a slightly different title
-    user_book_ids = set() 
-    
-    for row in existing_books:
-        user_normalized_titles.add(normalize_title(row['title']))
-        if row['google_books_id']:
-            user_book_ids.add(row['google_books_id'])
-
-    # --- 5. Get Recommendations ---
-    recommendations = []
-    # user_book_ids is passed and updated inside the function to track IDs already recommended
-    for genre in top_three_genres:
-        recs = get_google_recommendations(genre, user_normalized_titles, user_book_ids)
-        recommendations.extend(recs)
-
-    filtered_recommendations = [
-        book for book in recommendations 
-        if book['google_books_id'] not in dismissed_ids
-    ]
-    
-    # Prepare final data
     genre_data = {
         "labels": list(genre_counts.keys()),
         "counts": list(genre_counts.values())
     }
     
-    # Handle AJAX request separately (for Chart.js data)
+    # --- Part 2: Get Recommendations (This is the corrected logic) ---
+    recommendations = get_bcf_uai_gutendex_recommendations(user_id)
+
+    # Note: The old logic for filtering dismissed google_books_id is now completely removed.
+    # The new recommendation function already handles filtering for books on the user's shelf.
+    
+    # --- Part 3: Render the Template ---
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify(genre_data)
 
-    # Render template with all data
     return render_template(
         'analysis.html',
         total_books=total_books,
@@ -711,83 +701,8 @@ def api_analysis():
         reading=status_dict.get("Reading", 0),
         read=status_dict.get("Read", 0),
         genre_data=genre_data,
-        recommendations=filtered_recommendations # NEW: Pass filtered recommendations list
+        recommendations=recommendations # Pass the clean list of Gutendex recommendations
     )
-
-@app.route('/recommendation-action', methods=['POST'])
-def recommendation_action():
-    user_id = session.get('user_id')
-    if not user_id:
-        return jsonify({'success': False, 'message': 'User not logged in.'}), 401
-
-    data = request.get_json()
-    google_books_id = data.get('google_books_id')
-    action = data.get('action')
-    title = data.get('title', 'Unknown Book')
-
-    if not google_books_id or not action:
-        return jsonify({'success': False, 'message': 'Missing data.'}), 400
-
-    conn = get_db_connection()
-    message = ""
-    success = False
-
-    try:
-        if action == 'add':
-            author = data.get('author')
-            genre = data.get('genre')
-            thumbnail_url = data.get('thumbnail_url')
-
-            # Check if the book already exists, then insert if not.
-            existing_book = conn.execute(
-                'SELECT id FROM books WHERE user_id = ? AND google_books_id = ?', 
-                (user_id, google_books_id)
-            ).fetchone()
-
-            if existing_book:
-                message = f"'{title}' is already on your shelf."
-            else:
-                # UPDATED: Include author and genre in the INSERT statement
-                conn.execute(
-                    '''INSERT INTO books 
-                        (user_id, google_books_id, title, author, genre, thumbnail_url, status) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                    (user_id, google_books_id, title, author, genre, thumbnail_url, 'To Read')
-                )
-                # If a book is added, remove it from dismissed_recommendations
-                conn.execute(
-                    'DELETE FROM dismissed_recommendations WHERE user_id = ? AND google_books_id = ?',
-                    (user_id, google_books_id)
-                )
-                message = f"'{title}' added to your 'To Read' shelf!"
-            
-            success = True
-
-        elif action == 'dismiss':
-            # Record the dismissal persistently
-            conn.execute(
-                '''
-                INSERT OR IGNORE INTO dismissed_recommendations (user_id, google_books_id) 
-                VALUES (?, ?)
-                ''',
-                (user_id, google_books_id)
-            )
-            message = f"'{title}' dismissed. You won't see this recommendation again."
-            success = True
-
-        else:
-            message = 'Invalid action.'
-            success = False
-
-        conn.commit()
-    except sqlite3.Error as e:
-        conn.rollback()
-        message = f"Database error: {e}"
-        success = False
-    finally:
-        conn.close()
-
-    return jsonify({'success': success, 'message': message})
 
 @app.route('/analysis')
 def analysis():
